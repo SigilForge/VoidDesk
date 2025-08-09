@@ -1,0 +1,202 @@
+:root { 
+  --bg: #0b0b0f; 
+  --panel: #11131a; 
+  --ink: #e7e9ef; 
+  --muted: #8a90a3; 
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 14px/1.5 ui-sans-serif, system-ui, Segoe UI, Roboto;
+  background: var(--bg);
+  color: var(--ink);
+  display: flex;               /* eliminate bottom dead space */
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+header {
+  padding: 10px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid #222634;
+}
+header h1 { 
+  margin: 0 0 8px 0; 
+  font-size: 16px; 
+  letter-spacing: 0.6px; 
+}
+
+.row { 
+  display: flex; 
+  gap: 8px; 
+  align-items: center; 
+  flex-wrap: wrap; 
+}
+
+label { 
+  display: flex; 
+  gap: 8px; 
+  align-items: center; 
+  color: var(--muted); 
+}
+
+label input, select {
+  background: #0e1016;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+#saveCfg, #clear, #send, #apiMode, #plusMode, #sendOther, #logoutPlus {
+  background: #1a1f33;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+#saveCfg:hover, #clear:hover, #send:hover, .mode:hover, #sendOther:hover, #logoutPlus:hover { 
+  filter: brightness(1.15); 
+}
+
+.mode-toggle { 
+  display: inline-flex; 
+  border: 1px solid #2a2f45; 
+  border-radius: 10px; 
+  overflow: hidden; 
+}
+.mode { 
+  border: none; 
+  background: #12172a; 
+}
+.mode.active { 
+  background: #1f2750; 
+}
+
+.syslabel { 
+  margin-top: 6px; 
+  display: block; 
+}
+#system { 
+  width: 100%; 
+  margin-top: 4px; 
+}
+
+/* Refresh button: dark pill + SVG + Knight Rider sweep */
+#refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #1a1f33;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  line-height: 1;
+}
+
+#refresh:hover { filter: brightness(1.15); }
+
+#refresh svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+/* Knight Rider sweep overlay */
+@keyframes refreshSweep {
+  0%   { transform: translateX(-120%); }
+  50%  { transform: translateX(120%); }
+  100% { transform: translateX(-120%); }
+}
+
+#refresh.knight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 0, 60, 0.18) 45%,
+    rgba(255, 106, 136, 0.35) 50%,
+    rgba(255, 0, 60, 0.18) 55%,
+    transparent 100%
+  );
+  transform: translateX(-120%);
+  animation: refreshSweep 1.2s linear infinite;
+}
+
+/* Breathing icon while refreshing */
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.15); }
+}
+
+#refresh.knight svg {
+  animation: breathe 1.2s ease-in-out infinite;
+}
+
+/* Danger state when holding Shift */
+#refresh.danger {
+  background: #5a1321 !important; /* dark red base */
+  border-color: #ff375f !important;
+  box-shadow: 0 0 8px rgba(255, 55, 95, 0.6);
+}
+
+#refresh.danger:hover {
+  filter: brightness(1.2);
+}
+
+main {
+  flex: 1;             
+  min-height: 0;       
+  overflow: hidden;    
+}
+
+.pane {
+  height: 100%;
+  display: flex;       
+  flex-direction: column;
+}
+
+.hidden { display: none; }
+
+#chat {
+  padding: 12px;
+  flex: 1;             
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.msg {
+  padding: 10px 12px;
+  border: 1px solid #2a2f45;
+  border-radius: 12px;
+  margin: 8px 0;
+  white-space: pre-wrap;
+}
+.msg.user { background: #101320; }
+.msg.assistant { background: #0f1424; }
+
+footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border-top: 1px solid #222634;
+}
+#input {
+  flex: 1;
+  resize: vertical;
+  background: #0e1016;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 12px;
+  padding: 8px;
+}

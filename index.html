@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <!-- Loosened connect-src so custom endpoints (OpenRouter / local proxy) work -->
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self';
+             img-src 'self' data: https:;
+             style-src 'self' 'unsafe-inline';
+             connect-src 'self' https: wss:;
+             frame-src https://chat.openai.com https://platform.openai.com;
+             worker-src blob:;
+             child-src blob:;"
+  />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VoidDesk</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>VoidDesk</h1>
+    <div class="row">
+      <div class="mode-toggle">
+        <button id="apiMode" class="mode active">🜏 API</button>
+        <button id="plusMode" class="mode">☁ Plus</button>
+      </div>
+
+      <label>API Key
+        <input id="apiKey" type="password" placeholder="sk-..." />
+      </label>
+
+      <label>Model
+        <select id="model">
+          <option>gpt-4o</option>
+          <option>gpt-4.1</option>
+          <option>gpt-4o-mini</option>
+        </select>
+      </label>
+
+      <label>Endpoint
+        <input id="baseUrl" placeholder="https://api.openai.com" />
+      </label>
+
+      <label>API
+        <select id="apiKind">
+          <option value="responses" selected>Responses</option>
+          <option value="chat">Chat Completions</option>
+        </select>
+      </label>
+
+      <button id="saveCfg">Save</button>
+      <button id="clear">New Chat</button>
+      <button id="sendOther" title="Send selection to other mode (Ctrl/Cmd+Shift+S)">↔ Send → Other</button>
+      <button id="refresh" title="Refresh current mode">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <span>Refresh</span>
+</button>
+      <button id="logoutPlus" title="Logout Plus mode">Logout Plus</button>
+    </div>
+      
+    <label class="syslabel">System
+      <input id="system" placeholder="You are a helpful assistant." />
+    </label>
+  </header>
+
+  <main>
+    <section id="apiPane" class="pane">
+      <div id="chat"></div>
+    </section>
+    <section id="plusPane" class="pane hidden">
+      <webview
+        id="plusView"
+        src="https://chat.openai.com"
+        allowpopups
+        partition="persist:voiddesk-plus"
+        style="width:100%; height:100%;"
+      ></webview>
+    </section>
+  </main>
+
+  <footer>
+    <textarea id="input" rows="3" placeholder="Type and press Enter to send. Shift+Enter for newline."></textarea>
+    <button id="send">Send</button>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
