@@ -4,7 +4,7 @@
   "private": true,
   "description": "Ultra-minimal GPT desktop client with streaming + Plus/WebView mode.",
   "main": "main.js",
-  "author": "Knoxmortis",
+  "author": "SigilForge",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win",
@@ -12,62 +12,57 @@
     "build:linux": "electron-builder --linux",
     "build": "electron-builder -mwl"
   },
-"build": {
-  "appId": "com.sigilforge.voiddesk",
-  "productName": "VoidDesk",
-  "directories": {
-    "output": "release",
-    "buildResources": "assets"
-  },
-  "files": [
-    "main.js",
-    "preload.js",
-    "index.html",
-    "renderer.js",
-    "styles.css",
-    "package.json",
-    "README.md",
-    "assets/**"
-  ],
-  "asar": true,
-
-  "win": {
-    "icon": "assets/voiddesk.ico",
-    "target": [
-      { "target": "nsis", "arch": ["x64"] },
-      { "target": "zip",  "arch": ["x64"] }
+  "build": {
+    "appId": "com.sigilforge.voiddesk",
+    "productName": "VoidDesk",
+    "electronVersion": "31.2.0",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "renderer.js",
+      "styles.css",
+      "package.json",
+      "README.md",
+      "assets/**"
     ],
-    "artifactName": "VoidDesk-${version}-${arch}.${ext}"
+    "asar": true,
+    "win": {
+      "icon": "assets/voiddesk.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip",  "arch": ["x64"] }
+      ],
+      "artifactName": "VoidDesk-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VoidDesk"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.png",
+      "target": ["dmg", "zip"]
+    },
+    "linux": {
+      "icon": "assets",
+      "category": "Utility",
+      "target": ["AppImage", "deb"]
+    }
   },
-
-  "nsis": {
-    "oneClick": false,
-    "perMachine": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "shortcutName": "VoidDesk"
-  },
-
-  "mac": {
-    "category": "public.app-category.productivity",
-    "icon": "assets/icon.png",
-    "target": ["dmg", "zip"]
-  },
-
-  "linux": {
-    "icon": "assets",
-    "category": "Utility",
-    "target": ["AppImage", "deb"]
-  }
-}
-
   "dependencies": {
     "electron-store": "^8.1.0"
   },
   "devDependencies": {
-    "electron": "^31.2.0",
+    "electron": "31.2.0",
     "electron-builder": "^24.13.3"
   }
 }
-  
