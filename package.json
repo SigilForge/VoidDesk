@@ -15,7 +15,6 @@
   "build": {
     "appId": "com.sigilforge.voiddesk",
     "productName": "VoidDesk",
-    "electronVersion": "31.2.0",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -31,6 +30,7 @@
       "assets/**"
     ],
     "asar": true,
+
     "win": {
       "icon": "assets/voiddesk.ico",
       "target": [
@@ -39,6 +39,7 @@
       ],
       "artifactName": "VoidDesk-${version}-${arch}.${ext}"
     },
+
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -47,17 +48,17 @@
       "createStartMenuShortcut": true,
       "shortcutName": "VoidDesk"
     },
-    "mac": {
-      "category": "public.app-category.productivity",
-      "icon": "assets/icon.png",
-      "target": ["dmg", "zip"]
-    },
+
     "linux": {
       "icon": "assets",
       "category": "Utility",
-      "target": ["AppImage", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     }
   },
+
   "dependencies": {
     "electron-store": "^8.1.0"
   },
