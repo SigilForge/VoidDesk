@@ -5,6 +5,13 @@
   "description": "Ultra-minimal GPT desktop client with streaming + Plus/WebView mode.",
   "main": "main.js",
   "author": "You",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build": "electron-builder -mwl"
+  },
   "build": {
     "appId": "com.yourname.voiddesk",
     "productName": "VoidDesk",
@@ -31,11 +38,14 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
         }
-      ]
+      ],
+      "artifactName": "VoidDesk-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -48,99 +58,20 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png",
-      "target": [
-        "dmg",
-        "zip"
-      ]
+      "target": ["dmg", "zip"]
     },
     "linux": {
       "icon": "assets",
       "category": "Utility",
-      "target": [
-        "AppImage",
-        "deb"
-      ]
+      "target": ["AppImage", "deb"]
     }
-  },
-  "scripts": {
-    "start": "electron .",
-    "pack:win": "electron-packager . VoidDesk --platform=win32 --arch=x64 --icon=assets/voiddesk.ico --overwrite --asar"
-  },
-  "build": {
-    "win": {
-      "icon": "assets/icon.png",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "mac": {
-      "category": "public.app-category.productivity",
-      "icon": "assets/icon.png",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "linux": {
-      "icon": "assets",
-      "category": "Utility",
-      "target": [
-        "AppImage",
-        "deb"
-      ]
-    }
-  },
-  "scripts": {
-    "start": "electron .",
-    "pack:win": "electron-packager . VoidDesk --platform=win32 --arch=x64 --icon=assets/voiddesk.ico --overwrite --asar"
-  },
-  "build": {
-    "win": {
-      "icon": "assets/icon.png",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "mac": {
-      "category": "public.app-category.productivity",
-      "icon": "assets/icon.png",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "linux": {
-      "icon": "assets",
-      "category": "Utility",
-      "target": [
-        "AppImage",
-        "deb"
-      ]
-    }
-  },
-  "scripts": {
-    "start": "electron .",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "build": "electron-builder -mwl"
   },
   "dependencies": {
     "electron-store": "^8.1.0"
   },
   "devDependencies": {
-
     "electron": "^31.2.0",
     "electron-builder": "^24.13.3"
   }
 }
+  
