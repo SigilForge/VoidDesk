@@ -54,6 +54,9 @@ function enableSpellcheckForSession(ses, langs = DEFAULT_SPELL_LANGS) {
 }
 
 function createWindow () {
+  const ses = session.defaultSession;
+  enableSpellcheckForSession(ses);
+
   const win = new BrowserWindow({
     width: 980,
     height: 700,
@@ -62,17 +65,14 @@ function createWindow () {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true,
-      spellcheck: true // ← enable built-in spellcheck
+      spellcheck: true
     }
   });
 
+  attachSpellcheckContextMenu(win.webContents, ses);
+
   win.removeMenu();
   win.loadFile('index.html');
-
-  // Enable spellcheck + context menu
-  const ses = win.webContents.session;
-  enableSpellcheckForSession(ses);
-  attachSpellcheckContextMenu(win.webContents, ses);
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
