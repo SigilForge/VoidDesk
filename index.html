@@ -53,12 +53,14 @@
       <button id="clear">New Chat</button>
       <button id="sendOther" title="Send selection to other mode (Ctrl/Cmd+Shift+S)">↔ Send → Other</button>
       <button id="refresh" title="Refresh current mode">
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>
-  <span>Refresh</span>
-</button>
-      <button id="logoutPlus" title="Logout Plus mode">Logout Plus</button>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Refresh</span>
+    </button>
+    <button id="logoutPlus" title="Logout Plus mode">Logout Plus</button>
+    <button id="downloadsBtn" title="Downloads (Ctrl+J)">⬇ Downloads</button>
+    <button id="downloadTest" title="Test file download">Test DL</button>
     </div>
       
     <label class="syslabel">System
@@ -87,5 +89,19 @@
   </footer>
 
   <script src="renderer.js"></script>
+  <div class="toasts" id="toasts"></div>
+
+  <div id="downloadsPanel" class="downloads hidden">
+    <div class="downloads-header">
+      <span>Downloads</span>
+      <button id="openDownloadsFolder">Open downloads folder</button>
+    </div>
+    <div id="downloadsList" class="downloads-list"></div>
+  </div>
+
+  <!-- Example chat list entry -->
+  <div class="chat-entry" data-chat-id="abc123">
+    <a href="chat:abc123">Sample chat</a>
+  </div>
 </body>
 </html>

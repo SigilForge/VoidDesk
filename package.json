@@ -8,25 +8,63 @@
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win nsis zip --publish never",
-    "build:dir": "electron-builder --dir --publish never"
+    "build:mac": "electron-builder --mac dmg zip --publish never",
+    "build:linux": "electron-builder --linux AppImage deb --publish never",
+    "build": "electron-builder -mwl --publish never"
   },
   "build": {
+    "appId": "com.sigilforge.voiddesk",
+    "productName": "VoidDesk",
     "directories": {
       "output": "release",
       "buildResources": "assets"
     },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "README.md",
+      "assets/**",
+      "package.json"
+    ],
+    "asar": true,
     "win": {
-      "icon": "assets/voiddesk.ico"
+      "icon": "assets/voiddesk.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ],
+      "artifactName": "VoidDesk-${version}-${arch}.${ext}"
     },
     "nsis": {
-      "installerIcon": "assets/voiddesk.ico",
-      "uninstallerIcon": "assets/voiddesk.ico",
-      "installerHeaderIcon": "assets/voiddesk.ico"
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VoidDesk"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/voiddesk.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "linux": {
+      "icon": "assets",
+      "category": "Utility",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     }
   },
   "dependencies": {
-    "electron-store": "^8.1.0",
-    "sharp": "^0.34.3"
+    "electron-store": "^8.1.0"
   },
   "devDependencies": {
     "electron": "31.2.0",
