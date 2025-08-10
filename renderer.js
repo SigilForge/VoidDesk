@@ -16,6 +16,7 @@ const plusPane = document.getElementById('plusPane');
 const plusView = document.getElementById('plusView') || null;
 const baseUrlEl = document.getElementById('baseUrl');
 const apiKindEl = document.getElementById('apiKind');
+const DRAFT_KEY = 'draft';
 
 let history = [];            // [{role, content}]
 let mode = 'api';            // 'api' | 'plus'
@@ -27,6 +28,10 @@ function startRefreshAnim() {
   refreshBtn.classList.remove('knight');
   void refreshBtn.offsetWidth;   // reflow to restart CSS animation
   refreshBtn.classList.add('knight');
+// when window regains focus, put cursor in the composer (API mode only)
+window.addEventListener('focus', () => {
+  if (mode === 'api') inputEl.focus();
+});
 }
 function stopRefreshAnim() {
   if (!refreshBtn) return;
@@ -86,6 +91,8 @@ function pushMsg(role, content) {
 
 // ---------- Config load/save ----------
 async function loadCfg() {
+  const draft = await window.VoidDesk.cfg.get(DRAFT_KEY);
+if (draft) inputEl.value = draft;
   const [k, m, s, savedHistory, savedMode, baseUrl, apiKind, savedScroll] = await Promise.all([
     window.VoidDesk.cfg.get('apiKey'),
     window.VoidDesk.cfg.get('model'),
@@ -266,6 +273,17 @@ async function send() {
   const userText = inputEl.value.trim();
   if (!userText) return;
   inputEl.value = '';
+inputEl.addEventListener('input', () => {
+  window.VoidDesk.cfg.set(DRAFT_KEY, inputEl.value);
+});
+
+// ensure last state is saved if the window closes/crashes
+window.addEventListener('beforeunload', () => {
+  window.VoidDesk.cfg.set('history', history);
+  window.VoidDesk.cfg.set('scrollPos', chatEl.scrollTop);
+  window.VoidDesk.cfg.set(DRAFT_KEY, inputEl.value);
+});
+
 
   pushMsg('user', userText);
   await saveCfg();

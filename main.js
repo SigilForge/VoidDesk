@@ -54,28 +54,16 @@ function enableSpellcheckForSession(ses, langs = DEFAULT_SPELL_LANGS) {
 }
 
 function createWindow () {
-  const bounds = store.get('windowBounds') || { width: 980, height: 700 };
-
   const win = new BrowserWindow({
-    width: bounds.width,
-    height: bounds.height,
-    x: bounds.x,
-    y: bounds.y,
-    minWidth: 760,
-    minHeight: 520,
+    width: 980,
+    height: 700,
+    icon: path.join(__dirname, 'assets', 'voiddesk.ico'), // ← this sets the window/taskbar icon in packaged builds
     webPreferences: {
       contextIsolation: true,
-      sandbox: true,
       preload: path.join(__dirname, 'preload.js'),
-      webviewTag: true,
-      spellcheck: true,
+      webviewTag: true
     }
   });
-
-  // Persist window bounds
-  const saveBounds = () => store.set('windowBounds', win.getBounds());
-  win.on('resize', saveBounds);
-  win.on('move', saveBounds);
 
   win.removeMenu();
   win.loadFile('index.html');
@@ -84,17 +72,6 @@ function createWindow () {
     shell.openExternal(url);
     return { action: 'deny' };
   });
-
-  // Spellcheck + context menu
-  const defaultSes = session.defaultSession;
-  enableSpellcheckForSession(defaultSes);
-  attachSpellcheckContextMenu(win.webContents, defaultSes);
-
-  win.webContents.on('did-attach-webview', (_e, wc) => {
-    const plusSes = session.fromPartition('persist:voiddesk-plus');
-    enableSpellcheckForSession(plusSes);
-    attachSpellcheckContextMenu(wc, plusSes);
-  });
 }
 
 app.whenReady().then(() => {
@@ -102,7 +79,7 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
+  });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
