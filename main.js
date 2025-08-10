@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, session, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Menu, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
@@ -46,7 +46,61 @@ function attachSpellcheckContextMenu(webContents, ses) {
   webContents.on('context-menu', (event, params) => {
     const template = [];
 
-    // Detect if right-clicked element is a chat entry
+    // Save As for images
+    if (params.mediaType === 'image' && params.srcURL) {
+      template.push({
+        label: 'Save Image As...',
+        click: () => webContents.downloadURL(params.srcURL)
+      });
+      template.push({
+        label: 'Copy Image URL',
+        click: () => require('electron').clipboard.writeText(params.srcURL)
+      });
+      template.push({
+        label: 'Copy Image',
+        click: async () => {
+          // Try to fetch and copy image to clipboard
+          try {
+            const res = await fetch(params.srcURL);
+            const buf = Buffer.from(await res.arrayBuffer());
+            require('electron').clipboard.writeImage(require('electron').nativeImage.createFromBuffer(buf));
+          } catch (e) {
+            console.warn('Failed to copy image:', e);
+          }
+        }
+      });
+      template.push({ type: 'separator' });
+    }
+
+    // Save As for downloadable links
+    if (params.linkURL && params.linkURL.startsWith('http')) {
+      template.push({
+        label: 'Save Link As...',
+        click: () => webContents.downloadURL(params.linkURL)
+      });
+      template.push({
+        label: 'Copy Link',
+        click: () => require('electron').clipboard.writeText(params.linkURL)
+      });
+      template.push({
+        label: 'Open Link in External Browser',
+        click: () => shell.openExternal(params.linkURL)
+      });
+      template.push({
+        label: 'Open Link in New Window',
+        click: () => {
+          if (isPlusUrl(params.linkURL)) {
+            openPlusWindow(params.linkURL);
+          } else {
+            // Keep non‑Plus links external to avoid becoming a general browser
+            shell.openExternal(params.linkURL);
+          }
+        }
+      });
+      template.push({ type: 'separator' });
+    }
+
+    // Open in New Shell for chat links
     if (params.linkURL && params.linkURL.startsWith('chat:')) {
       const chatId = params.linkURL.replace(/^chat:/, '');
       template.push({
@@ -116,9 +170,31 @@ function createWindow () {
   const plusSession = session.fromPartition('persist:voiddesk-plus');
   enableSpellcheckForSession(plusSession);
 
-  // Attach to existing Plus WebView if already created in the DOM
+  // Attach handlers for any webview we embed (downloads + window.open)
   win.webContents.on('did-attach-webview', (_event, wc) => {
     attachSpellcheckContextMenu(wc, wc.session);
+
+    wc.setWindowOpenHandler(({ url }) => {
+      const fileLike = url.startsWith('blob:') || url.startsWith('data:') ||
+        /\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url);
+      if (fileLike) {
+        wc.downloadURL(url);
+        return { action: 'deny' };
+      }
+      if (isPlusUrl(url)) {
+        openPlusWindow(url);           // stays logged in via persist:voiddesk-plus
+        return { action: 'deny' };
+      }
+      shell.openExternal(url);         // non‑Plus → external browser
+      return { action: 'deny' };
+    });
+
+    wc.on('will-navigate', (e, url) => {
+      if (/\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url)) {
+        e.preventDefault();
+        wc.downloadURL(url);
+      }
+    });
   });
 
   win.removeMenu();
@@ -130,7 +206,51 @@ function createWindow () {
   });
 }
 
+// Helper: is this a ChatGPT/Plus URL that should open in an in-app Plus window?
+function isPlusUrl(u) {
+  try {
+    const h = new URL(u).hostname.toLowerCase();
+    return (
+      h === 'chat.openai.com' || h.endsWith('.openai.com') ||
+      h === 'chatgpt.com'     || h.endsWith('.chatgpt.com')
+    );
+  } catch { return false; }
+}
+
+// Open a new app window that targets the Plus webview (keeps persist:voiddesk-plus session)
+function openPlusWindow(targetUrl) {
+  const win = new BrowserWindow({
+    width: 980,
+    height: 700,
+    icon: path.join(__dirname, 'assets', 'voiddesk.ico'),
+    webPreferences: {
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webviewTag: true,
+      spellcheck: true
+    }
+  });
+  win.loadFile('index.html', { query: { plusUrl: targetUrl, mode: 'plus' } });
+}
+
+// Apply spellcheck languages to both sessions, persist in store
+function setSpellLangs(langs) {
+  const sessions = [session.defaultSession, session.fromPartition('persist:voiddesk-plus')];
+  sessions.forEach(s => { try { s.setSpellCheckerLanguages(langs); } catch {} });
+  store.set('spellLangs', langs);
+}
+
+// IPC to change spellcheck languages at runtime
+ipcMain.handle('spellcheck:setLanguages', (_e, langs) => {
+  if (!Array.isArray(langs) || !langs.length) return false;
+  setSpellLangs(langs);
+  return true;
+});
+
+// On app ready (or after creating windows), initialize from stored value
 app.whenReady().then(() => {
+  const langs = store.get('spellLangs') || ['en-US'];
+  setSpellLangs(langs);
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -193,6 +313,25 @@ ipcMain.handle('plus:logout', async () => {
   return true;
 });
 
+// Persisted download history
+const DOWNLOAD_HISTORY_KEY = 'downloadHistory';
+function addDownloadHistory(entry) {
+  const history = store.get(DOWNLOAD_HISTORY_KEY) || [];
+  history.unshift(entry);
+  store.set(DOWNLOAD_HISTORY_KEY, history.slice(0, 100));
+}
+
+// IPC for download history and utilities
+ipcMain.handle('downloads:getHistory', () => store.get(DOWNLOAD_HISTORY_KEY) || []);
+ipcMain.handle('downloads:clearHistory', () => { store.set(DOWNLOAD_HISTORY_KEY, []); return true; });
+ipcMain.handle('downloads:openFile', (_e, filePath) => shell.openPath(filePath));
+
+// Add missing relaunch IPC
+ipcMain.handle('app:relaunch', async () => {
+  app.relaunch();
+  app.exit(0);
+});
+
 // ---------------- Better download pipeline (both sessions) ----------------
 function setupDownloadHandling(ses, channelName = 'download') {
   ses.on('will-download', (event, item, wc) => {
@@ -231,7 +370,24 @@ function setupDownloadHandling(ses, channelName = 'download') {
         state,
         savePath: item.getSavePath()
       });
-      if (state === 'completed') shell.showItemInFolder(item.getSavePath());
+      if (state === 'completed') {
+        shell.showItemInFolder(item.getSavePath());
+        // save to history and notify
+        addDownloadHistory({
+          filename: item.getFilename(),
+          savePath: item.getSavePath(),
+          url: item.getURL(),
+          time: Date.now(),
+          state: 'completed'
+        });
+        try {
+          new Notification({
+            title: 'Download complete',
+            body: item.getFilename(),
+            icon: path.join(__dirname, 'assets', 'voiddesk.ico')
+          }).show();
+        } catch {}
+      }
     });
     item.resume();
   });

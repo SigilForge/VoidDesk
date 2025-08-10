@@ -17,6 +17,18 @@ body {
   min-height: 100vh;
 }
 
+body.light {
+  background: #f6f7fa;
+  color: #222;
+}
+body.light .pane,
+body.light .downloads,
+body.light .settings {
+  background: #fff;
+  color: #222;
+  border-color: #d0d3e0;
+}
+
 header {
   padding: 10px 12px;
   background: var(--panel);
@@ -211,7 +223,7 @@ footer {
   opacity: 0.9;
 }
 
-#downloadTest {
+#downloadsBtn {
   background: #1a1f33;
   color: var(--ink);
   border: 1px solid #2a2f45;
@@ -222,18 +234,13 @@ footer {
   font-weight: 500;
   transition: filter 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
-#downloadTest:hover { 
+#downloadsBtn:hover { 
   filter: brightness(1.15); 
   box-shadow: 0 2px 12px 0 #22263433;
 }
-#downloadTest.knight {
+#downloadsBtn.knight {
   animation: knight-rider 1.2s linear infinite;
   border-color: #ff375f;
-}
-@keyframes knight-rider {
-  0%   { box-shadow: 0 0 0 0 #ff375f; }
-  50%  { box-shadow: 0 0 12px 2px #ff375f; }
-  100% { box-shadow: 0 0 0 0 #ff375f; }
 }
 
 /* Downloads panel */
@@ -286,4 +293,39 @@ progress {
   width: 100%; 
   height: 6px; 
   accent-color: #ff375f;
+}
+
+window.VoidDesk.downloads.onStart(() => {
+  downloadsBtn.classList.remove('knight');
+  void downloadsBtn.offsetWidth;
+  downloadsBtn.classList.add('knight');
+});
+window.VoidDesk.downloads.onDone(() => {
+  downloadsBtn.classList.remove('knight');
+});
+
+.settings {
+  position: fixed; top: 60px; right: 24px; width: 320px;
+  background: #181c2c; border: 1px solid #2a2f45; border-radius: 14px;
+  z-index: 2000; padding: 18px 18px 12px; box-shadow: 0 4px 24px #000a;
+}
+.settings.hidden { display: none; }
+.settings-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:18px; font-weight:600; }
+.settings-list label { display:block; margin-bottom:12px; font-size:14px; }
+#saveSettings { margin-top:8px; width:100%; border-radius:10px; background:#1a1f33; color:var(--ink); border:1px solid #2a2f45; padding:8px 0; cursor:pointer; font-size:15px; font-weight:500; }
+/* Settings button = same pill look as Downloads/Test DL */
+#settingsBtn {
+  background: #1a1f33;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 20px;
+  padding: 6px 18px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: filter 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+#settingsBtn:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 2px 12px 0 #22263433;
 }

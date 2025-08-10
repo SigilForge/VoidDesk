@@ -60,7 +60,7 @@
     </button>
     <button id="logoutPlus" title="Logout Plus mode">Logout Plus</button>
     <button id="downloadsBtn" title="Downloads (Ctrl+J)">⬇ Downloads</button>
-    <button id="downloadTest" title="Test file download">Test DL</button>
+      <button id="settingsBtn" title="Settings">⚙ Settings</button>
     </div>
       
     <label class="syslabel">System
@@ -74,12 +74,13 @@
     </section>
     <section id="plusPane" class="pane hidden">
       <webview
-        id="plusView"
-        src="https://chat.openai.com"
-        allowpopups
-        partition="persist:voiddesk-plus"
-        style="width:100%; height:100%;"
-      ></webview>
+  id="plusView"
+  src="https://chat.openai.com"
+  allowpopups
+  partition="persist:voiddesk-plus"
+  preload="plus-preload.js"
+  style="width:100%; height:100%;"
+></webview>
     </section>
   </main>
 
@@ -99,9 +100,32 @@
     <div id="downloadsList" class="downloads-list"></div>
   </div>
 
-  <!-- Example chat list entry -->
-  <div class="chat-entry" data-chat-id="abc123">
-    <a href="chat:abc123">Sample chat</a>
+  <div id="settingsPanel" class="settings hidden">
+  <div class="settings-header">
+    <span>Settings</span>
+    <button id="closeSettings">✕</button>
   </div>
+  <div class="settings-list">
+    <label>
+      Spellcheck Language:
+      <select id="spellLangs" multiple>
+        <option value="en-US">English (US)</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="fr-FR">French</option>
+        <option value="de-DE">German</option>
+        <option value="es-ES">Spanish</option>
+        <!-- Add more as needed -->
+      </select>
+    </label>
+    <label>
+      Theme:
+      <select id="themeSelect">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </label>
+  </div>
+  <button id="saveSettings">Save Settings</button>
+</div>
 </body>
 </html>

@@ -20,7 +20,6 @@ const downloadsBtn = document.getElementById('downloadsBtn');
 const downloadsPanel = document.getElementById('downloadsPanel');
 const downloadsList = document.getElementById('downloadsList');
 const openDownloadsFolderBtn = document.getElementById('openDownloadsFolder');
-const downloadTestBtn = document.getElementById('downloadTest');
 const DRAFT_KEY = 'draft';
 
 // One-time setup for draft saving and unload
@@ -67,51 +66,81 @@ refreshBtn.addEventListener('mouseenter', () => setRefreshDanger(shiftDown));
 refreshBtn.addEventListener('mouseleave', () => setRefreshDanger(false));
 refreshBtn.addEventListener('focus', () => setRefreshDanger(shiftDown));
 refreshBtn.addEventListener('blur', () => setRefreshDanger(false));
-function startRefreshAnim() {
-  if (!refreshBtn) return;
-  refreshBtn.classList.remove('knight');
-  void refreshBtn.offsetWidth;   // reflow to restart CSS animation
-  refreshBtn.classList.add('knight');
-}
-// Always focus composer when the window gets focus (API mode)
+// Define once at startup (fix: was being added inside startRefreshAnim)
 window.addEventListener('focus', () => {
   if (mode === 'api') inputEl?.focus();
 });
 
+// Refresh animation state
+let refreshActive = false;
+let refreshWatch = null;
+
+function startRefreshAnim() {
+  if (!refreshBtn) return;
+  if (refreshActive) return; // don't keep restarting it
+  refreshActive = true;
+
+  refreshBtn.classList.remove('knight');
+  requestAnimationFrame(() => {
+    void refreshBtn.offsetWidth;
+    refreshBtn.classList.add('knight');
+  });
+
+  // Watchdog: clear if no stop event arrives
+  clearTimeout(refreshWatch);
+  refreshWatch = setTimeout(() => {
+    refreshActive = false;
+    refreshBtn.classList.remove('knight');
+    setRefreshDanger(false);
+  }, 4000);
+}
+
 function stopRefreshAnim() {
   if (!refreshBtn) return;
+  refreshActive = false;
   refreshBtn.classList.remove('knight');
+  clearTimeout(refreshWatch);
+  refreshWatch = null;
+  setRefreshDanger(false);
 }
+
+// Clear any stuck “Hard Reload” state if tab visibility changes
+document.addEventListener('visibilitychange', () => setRefreshDanger(false));
 
 // ---------- Mode switching ----------
 function setMode(next) {
   mode = next;
-  apiPane.classList.toggle('hidden', mode !== 'api');
-  plusPane.classList.toggle('hidden', mode !== 'plus');
-  apiBtn.classList.toggle('active', mode === 'api');
-  plusBtn.classList.toggle('active', mode === 'plus');
+
+  apiPane?.classList.toggle('hidden', mode !== 'api');
+  plusPane?.classList.toggle('hidden', mode !== 'plus');
+  apiBtn?.classList.toggle('active', mode === 'api');
+  plusBtn?.classList.toggle('active', mode === 'plus');
 
   const apiControls = [
-    apiKeyEl.closest('label'),
-    modelEl.closest('label'),
-    baseUrlEl.closest('label'),
-    apiKindEl.closest('label'),
+    apiKeyEl?.closest('label'),
+    modelEl?.closest('label'),
+    baseUrlEl?.closest('label'),
+    apiKindEl?.closest('label'),
     document.getElementById('clear'),
-    document.getElementById('system').closest('label')
+    document.getElementById('system')?.closest('label')
   ];
   for (const el of apiControls) if (el) el.style.display = (mode === 'api') ? 'flex' : 'none';
 
   const plusControls = [logoutPlusBtn];
   for (const el of plusControls) if (el) el.style.display = (mode === 'plus') ? 'flex' : 'none';
 
-  document.querySelector('footer').style.display = (mode === 'api') ? 'flex' : 'none';
+  const footer = document.querySelector('footer');
+  if (footer) footer.style.display = (mode === 'api') ? 'flex' : 'none';
 
   if (mode === 'api') {
-    inputEl.focus();
+    inputEl?.focus();
     chatEl.scrollTop = scrollPos;
   }
 
-  window.VoidDesk.cfg.set('mode', mode);
+  // Only persist if changed
+  window.VoidDesk.cfg.get('mode').then(prev => {
+    if (prev !== mode) window.VoidDesk.cfg.set('mode', mode);
+  });
 }
 
 // ---------- Message rendering ----------
@@ -138,7 +167,12 @@ function pushMsg(role, content) {
 async function loadCfg() {
   toastsEl = document.getElementById('toasts');
   const draft = await window.VoidDesk.cfg.get(DRAFT_KEY);
-  if (draft) inputEl.value = draft;
+  if (draft) {
+    inputEl.value = draft;
+    // Place caret at the end of the restored draft
+    try { inputEl.setSelectionRange(draft.length, draft.length); } catch {}
+  }
+
   const [k, m, s, savedHistory, savedMode, baseUrl, apiKind, savedScroll] = await Promise.all([
     window.VoidDesk.cfg.get('apiKey'),
     window.VoidDesk.cfg.get('model'),
@@ -167,6 +201,8 @@ async function loadCfg() {
   if (plusView) {
     plusView.addEventListener('did-start-loading', startRefreshAnim);
     plusView.addEventListener('did-stop-loading', stopRefreshAnim);
+    plusView.addEventListener('did-finish-load', stopRefreshAnim);
+    plusView.addEventListener('did-fail-load', stopRefreshAnim);
   }
 }
 
@@ -512,13 +548,19 @@ window.VoidDesk.downloads.onDone(({ id, state, savePath }) => {
 
 // --- Downloads UI ---
 const dlItems = new Map(); // id -> element
+let activeDlCount = 0;     // track concurrent downloads
 
 function toggleDownloads(open) {
   const show = (typeof open === 'boolean') ? open : downloadsPanel.classList.contains('hidden');
   downloadsPanel.classList.toggle('hidden', !show);
 }
 
-downloadsBtn?.addEventListener('click', () => toggleDownloads());
+// Single handler (remove any duplicate)
+downloadsBtn?.addEventListener('click', () => {
+  toggleDownloads();
+  loadDownloadHistory();
+});
+
 openDownloadsFolderBtn?.addEventListener('click', () => window.VoidDesk.downloads.openFolder());
 
 // Ctrl/Cmd + J (like browsers) handled in hotkeys above
@@ -541,6 +583,10 @@ function renderDlItem({ id, filename, totalBytes }) {
 window.VoidDesk.downloads.onStart((d) => {
   const el = renderDlItem(d);
   dlItems.set(d.id, el);
+  activeDlCount += 1;
+  downloadsBtn.classList.remove('knight');
+  void downloadsBtn.offsetWidth;
+  downloadsBtn.classList.add('knight');
   toggleDownloads(true);
 });
 
@@ -555,37 +601,98 @@ window.VoidDesk.downloads.onDone((d) => {
   const el = dlItems.get(d.id) || renderDlItem(d);
   el.querySelector('[data-state]').textContent = (d.state === 'completed') ? 'done' : d.state;
   el.querySelector('progress').value = el.querySelector('progress').max;
+  activeDlCount = Math.max(0, activeDlCount - 1);
+  if (activeDlCount === 0) downloadsBtn.classList.remove('knight');
 });
 
-// Test download button (uses main process downloadURL)
-downloadTestBtn?.addEventListener('click', () => {
-  // Start Knight Rider animation on DL button
-  downloadTestBtn.classList.remove('knight');
-  void downloadTestBtn.offsetWidth;
-  downloadTestBtn.classList.add('knight');
-
-  window.VoidDesk.downloads.start('https://speed.hetzner.de/5MB.bin');
-  toggleDownloads(true);
-});
-
-// Remove Knight Rider animation when any download completes
-window.VoidDesk.downloads.onDone(() => {
-  downloadTestBtn.classList.remove('knight');
-});
-
-window.VoidDesk.openChatInNewShell = (chatId) => {
-  window.VoidDesk.cfg.get(`history:${chatId}`).then(history => {
-    window.electronAPI.openNewShell(chatId);
+// Replace inline onclick-based history rendering with safe listeners
+async function loadDownloadHistory() {
+  const history = await window.VoidDesk.downloads.getHistory();
+  downloadsList.innerHTML = '';
+  history.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'dl-item';
+    div.innerHTML = `
+      <div class="dl-row">
+        <div class="dl-name" title="${d.filename}">${d.filename}</div>
+        <div class="dl-meta">${new Date(d.time).toLocaleString()}</div>
+      </div>
+      <progress max="1" value="1"></progress>
+    `;
+    const openBtn = document.createElement('button');
+    openBtn.textContent = 'Open';
+    openBtn.addEventListener('click', () => window.VoidDesk.downloads.openFile(d.savePath));
+    div.appendChild(openBtn);
+    downloadsList.appendChild(div);
   });
-};
+}
 
-const urlParams = new URLSearchParams(window.location.search);
-const chatId = urlParams.get('chatId');
-if (chatId) {
-  window.VoidDesk.cfg.get(`history:${chatId}`).then(history => {
-    if (Array.isArray(history)) {
-      chatEl.innerHTML = '';
-      history.forEach(m => renderMsg(m.role, m.content));
-    }
-  });
+// Settings UI
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+const closeSettingsBtn = document.getElementById('closeSettings');
+const saveSettingsBtn = document.getElementById('saveSettings');
+const spellLangsSelect = document.getElementById('spellLangs');
+const themeSelect = document.getElementById('themeSelect');
+
+function applyTheme(theme) {
+  document.body.classList.toggle('light', theme === 'light');
+}
+
+async function loadSettings() {
+  const langs = (await window.VoidDesk.cfg.get('spellLangs')) || ['en-US'];
+  for (const opt of spellLangsSelect?.options || []) opt.selected = langs.includes(opt.value);
+
+  const theme = (await window.VoidDesk.cfg.get('theme')) || 'dark';
+  if (themeSelect) themeSelect.value = theme;
+  applyTheme(theme);
+}
+
+function openSettings() {
+  settingsPanel?.classList.remove('hidden');
+  loadSettings();
+}
+function closeSettings() {
+  settingsPanel?.classList.add('hidden');
+}
+
+settingsBtn?.addEventListener('click', openSettings);
+closeSettingsBtn?.addEventListener('click', closeSettings);
+
+// Click outside to close
+document.addEventListener('click', (e) => {
+  if (!settingsPanel || settingsPanel.classList.contains('hidden')) return;
+  if (settingsPanel.contains(e.target) || e.target === settingsBtn) return;
+  closeSettings();
+});
+// Esc to close
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSettings();
+});
+
+// Save
+saveSettingsBtn?.addEventListener('click', async () => {
+  const langs = Array.from(spellLangsSelect?.selectedOptions || []).map(o => o.value);
+  const theme = themeSelect?.value || 'dark';
+
+  await window.VoidDesk.cfg.set('spellLangs', langs);
+  await window.VoidDesk.cfg.set('theme', theme);
+  applyTheme(theme);
+
+  // Update spellchecker immediately (no reload)
+  try { await window.VoidDesk.spellcheck.setLanguages(langs); } catch {}
+  closeSettings();
+});
+
+// Apply theme on boot
+loadSettings().catch(() => {});
+
+const params = new URLSearchParams(location.search);
+const plusTargetUrl = params.get('plusUrl');
+if (plusTargetUrl) {
+  const plusView = document.getElementById('plusView');
+  if (plusView) {
+    plusView.src = plusTargetUrl;
+    setMode('plus');
+  }
 }

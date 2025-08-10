@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('VoidDesk', {
     relaunch: () => ipcRenderer.invoke('app:relaunch')
   },
   downloads: {
+    // events
     onProgress: (fn) => {
       ipcRenderer.on('download:progress', (_e, d) => fn(d));
       ipcRenderer.on('downloadPlus:progress', (_e, d) => fn(d));
@@ -25,29 +26,19 @@ contextBridge.exposeInMainWorld('VoidDesk', {
       ipcRenderer.on('download:done', (_e, d) => fn(d));
       ipcRenderer.on('downloadPlus:done', (_e, d) => fn(d));
     },
-    // New: trigger download and open folder
+    // actions
     start: (url) => ipcRenderer.send('download:url', url),
-    openFolder: () => ipcRenderer.invoke('downloads:openFolder')
+    openFolder: () => ipcRenderer.invoke('downloads:openFolder'),
+    openFile: (path) => ipcRenderer.invoke('downloads:openFile', path),
+    getHistory: () => ipcRenderer.invoke('downloads:getHistory'),
+    clearHistory: () => ipcRenderer.invoke('downloads:clearHistory'),
+  },
+  spellcheck: {
+    setLanguages: (langs) => ipcRenderer.invoke('spellcheck:setLanguages', langs)
   }
 });
 
+// Optional: legacy API surface if you still use it elsewhere
 contextBridge.exposeInMainWorld('electronAPI', {
   openNewShell: (chatId) => ipcRenderer.send('chat:openNewShell', chatId),
-  closeShell: (chatId) => ipcRenderer.send('chat:closeShell', chatId),
-  minimize: () => ipcRenderer.send('window:minimize'),
-  maximize: () => ipcRenderer.send('window:maximize'),
-  unmaximize: () => ipcRenderer.send('window:unmaximize'),
-  isMaximized: () => ipcRenderer.send('window:isMaximized'),
-  onAppEvent: (event, fn) => {
-    ipcRenderer.on(event, (_e, ...args) => fn(...args));
-  },
-  onceAppEvent: (event, fn) => {
-    ipcRenderer.once(event, (_e, ...args) => fn(...args));
-  },
-  send: (channel, ...args) => {
-    ipcRenderer.send(channel, ...args);
-  },
-  invoke: (channel, ...args) => {
-    return ipcRenderer.invoke(channel, ...args);
-  }
 });
