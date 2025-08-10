@@ -18,11 +18,49 @@ const baseUrlEl = document.getElementById('baseUrl');
 const apiKindEl = document.getElementById('apiKind');
 const DRAFT_KEY = 'draft';
 
+// One-time setup for draft saving and unload
+inputEl.addEventListener('input', () => {
+  window.VoidDesk.cfg.set(DRAFT_KEY, inputEl.value);
+});
+
+window.addEventListener('beforeunload', () => {
+  window.VoidDesk.cfg.set('history', history);
+  window.VoidDesk.cfg.set('scrollPos', chatEl.scrollTop);
+  window.VoidDesk.cfg.set(DRAFT_KEY, inputEl.value);
+});
+
 let history = [];            // [{role, content}]
 let mode = 'api';            // 'api' | 'plus'
 let scrollPos = 0;           // remember API pane scroll
 
 // ---------- helper: stable restart of the refresh animation ----------
+// Helper to toggle "Hard Reload" affordance
+function setRefreshDanger(on) {
+  if (!refreshBtn) return;
+  refreshBtn.classList.toggle('danger', on);
+  const span = refreshBtn.querySelector('span');
+  if (span) span.textContent = on ? 'Hard Reload' : 'Refresh';
+}
+
+// Shift/hard reload UX logic
+let shiftDown = false;
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Shift' && !shiftDown) {
+    shiftDown = true;
+    const hovered = refreshBtn.matches(':hover, :focus');
+    setRefreshDanger(hovered);
+  }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'Shift') {
+    shiftDown = false;
+    setRefreshDanger(false);
+  }
+});
+refreshBtn.addEventListener('mouseenter', () => setRefreshDanger(shiftDown));
+refreshBtn.addEventListener('mouseleave', () => setRefreshDanger(false));
+refreshBtn.addEventListener('focus', () => setRefreshDanger(shiftDown));
+refreshBtn.addEventListener('blur', () => setRefreshDanger(false));
 function startRefreshAnim() {
   if (!refreshBtn) return;
   refreshBtn.classList.remove('knight');
@@ -30,7 +68,7 @@ function startRefreshAnim() {
   refreshBtn.classList.add('knight');
 // when window regains focus, put cursor in the composer (API mode only)
 window.addEventListener('focus', () => {
-  if (mode === 'api') inputEl.focus();
+  if (mode === 'api') inputEl?.focus();
 });
 }
 function stopRefreshAnim() {
@@ -266,23 +304,17 @@ async function send() {
   if (mode !== 'api') return;
 
   const apiKey = apiKeyEl.value.trim();
-  const baseUrl = (baseUrlEl.value.trim() || 'https://api.openai.com').replace(/\/+$/, '');
+  let baseUrl = (baseUrlEl.value.trim() || 'https://api.openai.com').replace(/\/+$/, '');
+  if (/^wss?:\/\//i.test(baseUrl)) {
+    alert('WebSocket URLs (ws://, wss://) are not supported for HTTP endpoints.');
+    return;
+  }
   const apiKind = apiKindEl.value;
   if (!apiKey) { alert('Add your API key first.'); return; }
 
   const userText = inputEl.value.trim();
   if (!userText) return;
   inputEl.value = '';
-inputEl.addEventListener('input', () => {
-  window.VoidDesk.cfg.set(DRAFT_KEY, inputEl.value);
-});
-
-// ensure last state is saved if the window closes/crashes
-window.addEventListener('beforeunload', () => {
-  window.VoidDesk.cfg.set('history', history);
-  window.VoidDesk.cfg.set('scrollPos', chatEl.scrollTop);
-  window.VoidDesk.cfg.set(DRAFT_KEY, inputEl.value);
-});
 
 
   pushMsg('user', userText);

@@ -57,16 +57,22 @@ function createWindow () {
   const win = new BrowserWindow({
     width: 980,
     height: 700,
-    icon: path.join(__dirname, 'assets', 'voiddesk.ico'), // ← this sets the window/taskbar icon in packaged builds
+    icon: path.join(__dirname, 'assets', 'voiddesk.ico'),
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webviewTag: true
+      webviewTag: true,
+      spellcheck: true // ← enable built-in spellcheck
     }
   });
 
   win.removeMenu();
   win.loadFile('index.html');
+
+  // Enable spellcheck + context menu
+  const ses = win.webContents.session;
+  enableSpellcheckForSession(ses);
+  attachSpellcheckContextMenu(win.webContents, ses);
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
