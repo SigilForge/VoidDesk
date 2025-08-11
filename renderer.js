@@ -17,9 +17,8 @@ const plusView = document.getElementById('plusView') || null;
 const baseUrlEl = document.getElementById('baseUrl');
 const apiKindEl = document.getElementById('apiKind');
 const downloadsBtn = document.getElementById('downloadsBtn');
-const downloadsPanel = document.getElementById('downloadsPanel');
-const downloadsList = document.getElementById('downloadsList');
-const openDownloadsFolderBtn = document.getElementById('openDownloadsFolder');
+// Note: downloadsPanel/downloadsList are defined after the script tag in index.html.
+// Query them at use-time to avoid nulls on initial load.
 const DRAFT_KEY = 'draft';
 
 // One-time setup for draft saving and unload
@@ -551,8 +550,10 @@ const dlItems = new Map(); // id -> element
 let activeDlCount = 0;     // track concurrent downloads
 
 function toggleDownloads(open) {
-  const show = (typeof open === 'boolean') ? open : downloadsPanel.classList.contains('hidden');
-  downloadsPanel.classList.toggle('hidden', !show);
+  const panel = document.getElementById('downloadsPanel');
+  if (!panel) return;
+  const show = (typeof open === 'boolean') ? open : panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !show);
 }
 
 // Single handler (remove any duplicate)
@@ -561,7 +562,13 @@ downloadsBtn?.addEventListener('click', () => {
   loadDownloadHistory();
 });
 
-openDownloadsFolderBtn?.addEventListener('click', () => window.VoidDesk.downloads.openFolder());
+// Delegate open downloads folder click (button exists after script tag)
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (t && t.id === 'openDownloadsFolder') {
+    window.VoidDesk.downloads.openFolder();
+  }
+});
 
 // Ctrl/Cmd + J (like browsers) handled in hotkeys above
 
@@ -576,7 +583,8 @@ function renderDlItem({ id, filename, totalBytes }) {
     </div>
     <progress max="${totalBytes || 1}" value="0"></progress>
   `;
-  downloadsList.prepend(div);
+  const list = document.getElementById('downloadsList');
+  list?.prepend(div);
   return div;
 }
 
@@ -603,12 +611,32 @@ window.VoidDesk.downloads.onDone((d) => {
   el.querySelector('progress').value = el.querySelector('progress').max;
   activeDlCount = Math.max(0, activeDlCount - 1);
   if (activeDlCount === 0) downloadsBtn.classList.remove('knight');
+  // If the panel is open, refresh history so the latest item appears
+  const panel = document.getElementById('downloadsPanel');
+  if (panel && !panel.classList.contains('hidden')) {
+    loadDownloadHistory();
+  }
 });
 
 // Replace inline onclick-based history rendering with safe listeners
 async function loadDownloadHistory() {
   const history = await window.VoidDesk.downloads.getHistory();
-  downloadsList.innerHTML = '';
+  const list = document.getElementById('downloadsList');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!history || history.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'dl-item';
+    empty.innerHTML = `
+      <div class="dl-row">
+        <div class="dl-name">No downloads yet</div>
+        <div class="dl-meta">—</div>
+      </div>
+      <progress max="1" value="0"></progress>
+    `;
+    list.appendChild(empty);
+    return;
+  }
   history.forEach(d => {
     const div = document.createElement('div');
     div.className = 'dl-item';
@@ -623,17 +651,12 @@ async function loadDownloadHistory() {
     openBtn.textContent = 'Open';
     openBtn.addEventListener('click', () => window.VoidDesk.downloads.openFile(d.savePath));
     div.appendChild(openBtn);
-    downloadsList.appendChild(div);
+    list.appendChild(div);
   });
 }
 
 // Settings UI
 const settingsBtn = document.getElementById('settingsBtn');
-const settingsPanel = document.getElementById('settingsPanel');
-const closeSettingsBtn = document.getElementById('closeSettings');
-const saveSettingsBtn = document.getElementById('saveSettings');
-const spellLangsSelect = document.getElementById('spellLangs');
-const themeSelect = document.getElementById('themeSelect');
 
 function applyTheme(theme) {
   document.body.classList.toggle('light', theme === 'light');
@@ -641,28 +664,70 @@ function applyTheme(theme) {
 
 async function loadSettings() {
   const langs = (await window.VoidDesk.cfg.get('spellLangs')) || ['en-US'];
-  for (const opt of spellLangsSelect?.options || []) opt.selected = langs.includes(opt.value);
+  const langSel = document.getElementById('spellLangs');
+  if (langSel && 'options' in langSel) {
+    for (const opt of langSel.options) opt.selected = langs.includes(opt.value);
+  }
 
   const theme = (await window.VoidDesk.cfg.get('theme')) || 'dark';
-  if (themeSelect) themeSelect.value = theme;
+  const themeSel = document.getElementById('themeSelect');
+  if (themeSel) themeSel.value = theme;
   applyTheme(theme);
+
+  // New: ask where to save
+  const ask = await window.VoidDesk.cfg.get('askWhereToSave');
+  const askCb = document.getElementById('askWhereToSave');
+  if (askCb) askCb.checked = !!ask;
+
+  const reveal = await window.VoidDesk.cfg.get('revealOnComplete');
+  const revealCb = document.getElementById('revealOnComplete');
+  if (revealCb) revealCb.checked = !!reveal;
 }
 
 function openSettings() {
-  settingsPanel?.classList.remove('hidden');
+  const panel = document.getElementById('settingsPanel');
+  panel?.classList.remove('hidden');
   loadSettings();
 }
 function closeSettings() {
-  settingsPanel?.classList.add('hidden');
+  const panel = document.getElementById('settingsPanel');
+  panel?.classList.add('hidden');
 }
 
 settingsBtn?.addEventListener('click', openSettings);
-closeSettingsBtn?.addEventListener('click', closeSettings);
+
+// Delegate close/save clicks for settings (buttons exist after script tag)
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  if (!t) return;
+  if (t.id === 'closeSettings') {
+    closeSettings();
+  } else if (t.id === 'saveSettings') {
+    const langSel = document.getElementById('spellLangs');
+    const themeSel = document.getElementById('themeSelect');
+  const askCb = document.getElementById('askWhereToSave');
+  const revealCb = document.getElementById('revealOnComplete');
+    const langs = Array.from(langSel?.selectedOptions || []).map(o => o.value);
+    const theme = themeSel?.value || 'dark';
+  const ask = !!askCb?.checked;
+  const reveal = !!revealCb?.checked;
+
+    await window.VoidDesk.cfg.set('spellLangs', langs);
+    await window.VoidDesk.cfg.set('theme', theme);
+  await window.VoidDesk.cfg.set('askWhereToSave', ask);
+  await window.VoidDesk.cfg.set('revealOnComplete', reveal);
+    applyTheme(theme);
+
+    try { await window.VoidDesk.spellcheck.setLanguages(langs); } catch {}
+    closeSettings();
+  }
+});
 
 // Click outside to close
 document.addEventListener('click', (e) => {
-  if (!settingsPanel || settingsPanel.classList.contains('hidden')) return;
-  if (settingsPanel.contains(e.target) || e.target === settingsBtn) return;
+  const panel = document.getElementById('settingsPanel');
+  if (!panel || panel.classList.contains('hidden')) return;
+  if (panel.contains(e.target) || e.target === settingsBtn) return;
   closeSettings();
 });
 // Esc to close
@@ -670,22 +735,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeSettings();
 });
 
-// Save
-saveSettingsBtn?.addEventListener('click', async () => {
-  const langs = Array.from(spellLangsSelect?.selectedOptions || []).map(o => o.value);
-  const theme = themeSelect?.value || 'dark';
-
-  await window.VoidDesk.cfg.set('spellLangs', langs);
-  await window.VoidDesk.cfg.set('theme', theme);
-  applyTheme(theme);
-
-  // Update spellchecker immediately (no reload)
-  try { await window.VoidDesk.spellcheck.setLanguages(langs); } catch {}
-  closeSettings();
+// Apply theme on boot once DOM is ready
+window.addEventListener('DOMContentLoaded', () => {
+  loadSettings().catch(() => {});
 });
-
-// Apply theme on boot
-loadSettings().catch(() => {});
 
 const params = new URLSearchParams(location.search);
 const plusTargetUrl = params.get('plusUrl');

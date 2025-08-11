@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, session, Menu, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Menu, Notification, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
@@ -7,6 +7,11 @@ const store = new Store({ name: 'voiddesk' });
 const DEFAULT_SPELL_LANGS = store.get('spellLangs') || ['en-US'];
 
 if (process.platform === 'win32') app.setAppUserModelId('VoidDesk');
+
+// Reduce WPAD/proxy SSL noise by forcing direct connections (no system proxy)
+// Remove these two lines if you need system proxy support
+app.commandLine.appendSwitch('no-proxy-server');
+const setDirectProxy = async (ses) => { try { await ses.setProxy({ proxyRules: 'direct://' }); } catch {} };
 
 // Strict filename scrubber: strips separators, control chars, trims length
 function sanitizeFilename(name, fallback = 'download.bin') {
@@ -43,6 +48,8 @@ function enableSpellcheckForSession(ses, langs = DEFAULT_SPELL_LANGS) {
 }
 
 function attachSpellcheckContextMenu(webContents, ses) {
+  // Track URLs that should force a Save dialog for this webContents
+  const wcId = webContents.id;
   webContents.on('context-menu', (event, params) => {
     const template = [];
 
@@ -50,7 +57,10 @@ function attachSpellcheckContextMenu(webContents, ses) {
     if (params.mediaType === 'image' && params.srcURL) {
       template.push({
         label: 'Save Image As...',
-        click: () => webContents.downloadURL(params.srcURL)
+        click: () => {
+          markForceAsk(webContents, params.srcURL);
+          webContents.downloadURL(params.srcURL);
+        }
       });
       template.push({
         label: 'Copy Image URL',
@@ -76,7 +86,10 @@ function attachSpellcheckContextMenu(webContents, ses) {
     if (params.linkURL && params.linkURL.startsWith('http')) {
       template.push({
         label: 'Save Link As...',
-        click: () => webContents.downloadURL(params.linkURL)
+        click: () => {
+          markForceAsk(webContents, params.linkURL);
+          webContents.downloadURL(params.linkURL);
+        }
       });
       template.push({
         label: 'Copy Link',
@@ -148,6 +161,20 @@ function attachSpellcheckContextMenu(webContents, ses) {
   });
 }
 
+// Map of WebContents.id -> Set of URLs that should force Save dialog
+const forceAskMap = new Map();
+const forceAskNext = new Set(); // wc.id with a one-shot force-ask flag
+function markForceAsk(wc, url) {
+  try {
+    const id = wc?.id;
+    if (!id || !url) return;
+    let s = forceAskMap.get(id);
+    if (!s) { s = new Set(); forceAskMap.set(id, s); }
+    s.add(url);
+  forceAskNext.add(id);
+  } catch {}
+}
+
 function createWindow () {
   const ses = session.defaultSession;
   enableSpellcheckForSession(ses);
@@ -175,11 +202,16 @@ function createWindow () {
     attachSpellcheckContextMenu(wc, wc.session);
 
     wc.setWindowOpenHandler(({ url }) => {
-      const fileLike = url.startsWith('blob:') || url.startsWith('data:') ||
+      const httpFileLike = /^https?:/i.test(url) &&
         /\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url);
-      if (fileLike) {
+      if (httpFileLike) {
+        // Deny the popup and download directly in this WebContents
         wc.downloadURL(url);
         return { action: 'deny' };
+      }
+      // Allow blob:/data: popups to proceed so Chromium can handle the download natively
+      if (url.startsWith('blob:') || url.startsWith('data:')) {
+        return { action: 'allow' };
       }
       if (isPlusUrl(url)) {
         openPlusWindow(url);           // stays logged in via persist:voiddesk-plus
@@ -189,12 +221,7 @@ function createWindow () {
       return { action: 'deny' };
     });
 
-    wc.on('will-navigate', (e, url) => {
-      if (/\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url)) {
-        e.preventDefault();
-        wc.downloadURL(url);
-      }
-    });
+  // Do not intercept file-like navigations; let Chromium create DownloadItems
   });
 
   win.removeMenu();
@@ -259,6 +286,10 @@ app.whenReady().then(() => {
   // Enable spellcheck for Plus mode's session
   const plusSession = session.fromPartition('persist:voiddesk-plus');
   enableSpellcheckForSession(plusSession);
+
+  // Force direct connections (silence WPAD self-signed noise)
+  setDirectProxy(session.defaultSession);
+  setDirectProxy(plusSession);
 
   // Attach spellcheck context menu for any web-contents created under Plus partition
   app.on('web-contents-created', (_event, wc) => {
@@ -334,61 +365,115 @@ ipcMain.handle('app:relaunch', async () => {
 
 // ---------------- Better download pipeline (both sessions) ----------------
 function setupDownloadHandling(ses, channelName = 'download') {
-  ses.on('will-download', (event, item, wc) => {
-    event.preventDefault();
+  ses.on('will-download', async (event, item, wc) => {
+  // Do not prevent default; let Chromium manage the transfer.
+    // Helper to safely access DownloadItem without throwing if destroyed
+    const safe = (fn, fallback = null) => { try { return fn(); } catch { return fallback; } };
+    const rawName = safe(() => item.getFilename()) || 'download.bin';
+    const filename = sanitizeFilename(rawName);
+    let targetPath = '';
     try {
-      const rawName = item.getFilename();
-      const filename = sanitizeFilename(rawName);
-      const downloads = app.getPath('downloads');
-      let target = safeJoin(downloads, filename);
-      const p = path.parse(target);
-      let i = 1;
-      while (fs.existsSync(target)) {
-        target = safeJoin(downloads, `${p.name} (${i++})${p.ext}`);
+      const url = safe(() => item.getURL());
+      // Decide whether to force a prompt (no setSavePath) or auto-save
+      let ask = store.get('askWhereToSave');
+      try {
+        const wid = wc?.id;
+        const s = wid ? forceAskMap.get(wid) : undefined;
+        if (wid && forceAskNext.has(wid)) {
+          ask = true;
+          forceAskNext.delete(wid);
+        } else if (s && url && s.has(url)) {
+          ask = true;
+          s.delete(url);
+        }
+      } catch {}
+  if (!ask) {
+        // Auto-save to Downloads, dedupe filename
+        const downloads = app.getPath('downloads');
+        let target = safeJoin(downloads, filename);
+        const p = path.parse(target);
+        let i = 1;
+        while (fs.existsSync(target)) {
+          target = safeJoin(downloads, `${p.name} (${i++})${p.ext}`);
+        }
+        targetPath = target;
+        safe(() => item.setSavePath(targetPath));
+        try { store.set('lastSaveFolder', path.dirname(targetPath)); } catch {}
       }
-      item.setSavePath(target);
-    } catch (e) {
+  } catch (e) {
       const fallback = path.join(app.getPath('downloads'), 'download.bin');
-      item.setSavePath(fallback);
+      try { safe(() => item.setSavePath(fallback)); } catch {}
+      targetPath = fallback;
     }
 
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const send = (type, payload = {}) => {
-      wc?.send(`${channelName}:${type}`, { id, url: item.getURL(), ...payload });
+      const url = safe(() => item.getURL());
+      wc?.send(`${channelName}:${type}`, { id, url, ...payload });
     };
 
-    send('start', { filename: item.getFilename(), totalBytes: item.getTotalBytes() });
-    item.on('updated', (_e, state) => {
-      send('progress', {
-        state,
-        receivedBytes: item.getReceivedBytes(),
-        totalBytes: item.getTotalBytes()
-      });
-    });
-    item.once('done', (_e, state) => {
-      send('done', {
-        state,
-        savePath: item.getSavePath()
-      });
-      if (state === 'completed') {
-        shell.showItemInFolder(item.getSavePath());
-        // save to history and notify
-        addDownloadHistory({
-          filename: item.getFilename(),
-          savePath: item.getSavePath(),
-          url: item.getURL(),
-          time: Date.now(),
-          state: 'completed'
-        });
+    send('start', { filename: safe(() => item.getFilename(), filename), totalBytes: safe(() => item.getTotalBytes(), 0) });
+    try {
+      item.on('updated', (_e, state) => {
         try {
-          new Notification({
-            title: 'Download complete',
-            body: item.getFilename(),
-            icon: path.join(__dirname, 'assets', 'voiddesk.ico')
-          }).show();
+          send('progress', {
+            state,
+            receivedBytes: safe(() => item.getReceivedBytes(), 0),
+            totalBytes: safe(() => item.getTotalBytes(), 0)
+          });
         } catch {}
-      }
-    });
-    item.resume();
+      });
+      item.once('done', async (_e, state) => {
+        try {
+          const savePath = safe(() => item.getSavePath());
+          send('done', { savePath });
+          if (state === 'completed' && savePath) {
+            try { if (store.get('revealOnComplete')) shell.showItemInFolder(savePath); } catch {}
+            // save to history and notify
+            addDownloadHistory({
+              filename: safe(() => item.getFilename(), filename),
+              savePath,
+              url: safe(() => item.getURL()),
+              time: Date.now(),
+              state: 'completed'
+            });
+            try {
+              new Notification({
+                title: 'Download complete',
+                body: safe(() => item.getFilename(), filename),
+                icon: path.join(__dirname, 'assets', 'voiddesk.ico')
+              }).show();
+            } catch {}
+          } else if (savePath) {
+            // Fallback attempt: fetch via net and write to savePath if URL available
+            try {
+              const url = safe(() => item.getURL());
+              if (url) {
+                await new Promise((resolve, reject) => {
+                  const request = net.request(url);
+                  const fileStream = fs.createWriteStream(savePath);
+                  request.on('response', (response) => {
+                    response.on('end', resolve);
+                    response.on('error', reject);
+                    response.pipe(fileStream);
+                  });
+                  request.on('error', reject);
+                  request.end();
+                });
+                addDownloadHistory({
+                  filename: safe(() => item.getFilename(), filename),
+                  savePath,
+                  url,
+                  time: Date.now(),
+                  state: 'completed'
+                });
+                try { if (store.get('revealOnComplete')) shell.showItemInFolder(savePath); } catch {}
+              }
+            } catch {}
+          }
+        } catch {}
+      });
+  // No resume needed when not preventing default
+    } catch {}
   });
 }
