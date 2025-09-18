@@ -23,7 +23,7 @@
     <div class="row">
       <div class="mode-toggle">
         <button id="apiMode" class="mode active">🜏 API</button>
-        <button id="plusMode" class="mode">☁ Plus</button>
+        <button id="webMode" class="mode">☁ Web</button>
       </div>
 
       <label>API Key
@@ -58,7 +58,7 @@
       </svg>
       <span>Refresh</span>
     </button>
-    <button id="logoutPlus" title="Logout Plus mode">Logout Plus</button>
+    <button id="logoutWeb" title="Logout Web mode">Logout Web</button>
     <button id="downloadsBtn" title="Downloads (Ctrl+J)">⬇ Downloads</button>
       <button id="settingsBtn" title="Settings">⚙ Settings</button>
     </div>
@@ -72,13 +72,14 @@
     <section id="apiPane" class="pane">
       <div id="chat"></div>
     </section>
-    <section id="plusPane" class="pane hidden">
+    <section id="webPane" class="pane hidden">
+      <!-- Legacy partition name retained so existing sessions persist across upgrades -->
       <webview
-  id="plusView"
+  id="webView"
   src="https://chat.openai.com"
   allowpopups
   partition="persist:voiddesk-plus"
-  preload="plus-preload.js"
+  preload="web-preload.js"
   style="width:100%; height:100%;"
 ></webview>
     </section>

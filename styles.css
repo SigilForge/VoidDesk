@@ -62,7 +62,7 @@ label input, select {
   padding: 6px 8px;
 }
 
-#saveCfg, #clear, #send, #apiMode, #plusMode, #sendOther, #logoutPlus {
+#saveCfg, #clear, #send, #apiMode, #webMode, #sendOther, #logoutWeb {
   background: #1a1f33;
   color: var(--ink);
   border: 1px solid #2a2f45;
@@ -70,8 +70,8 @@ label input, select {
   padding: 6px 10px;
   cursor: pointer;
 }
-#saveCfg:hover, #clear:hover, #send:hover, .mode:hover, #sendOther:hover, #logoutPlus:hover { 
-  filter: brightness(1.15); 
+#saveCfg:hover, #clear:hover, #send:hover, .mode:hover, #sendOther:hover, #logoutWeb:hover {
+  filter: brightness(1.15);
 }
 
 .mode-toggle { 

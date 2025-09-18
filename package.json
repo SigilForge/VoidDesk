@@ -2,7 +2,7 @@
   "name": "voiddesk",
   "version": "0.4.0",
   "private": true,
-  "description": "Ultra-minimal GPT desktop client with streaming + Plus/WebView mode.",
+  "description": "Ultra-minimal GPT desktop client with streaming + Web/WebView mode.",
   "main": "main.js",
   "author": "SigilForge",
   "scripts": {
@@ -23,6 +23,7 @@
       "main.js",
       "preload.js",
       "renderer.js",
+      "web-preload.js",
       "index.html",
       "styles.css",
       "README.md",

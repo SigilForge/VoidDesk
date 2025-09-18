@@ -7,19 +7,64 @@ const sysEl = document.getElementById('system');
 const saveCfgBtn = document.getElementById('saveCfg');
 const clearBtn = document.getElementById('clear');
 const apiBtn = document.getElementById('apiMode');
-const plusBtn = document.getElementById('plusMode');
+const webBtn = document.getElementById('webMode');
 const sendOtherBtn = document.getElementById('sendOther');
-const logoutPlusBtn = document.getElementById('logoutPlus');
+const logoutWebBtn = document.getElementById('logoutWeb');
 const refreshBtn = document.getElementById('refresh');
 const apiPane = document.getElementById('apiPane');
-const plusPane = document.getElementById('plusPane');
-const plusView = document.getElementById('plusView') || null;
+const webPane = document.getElementById('webPane');
+const webView = document.getElementById('webView') || null;
 const baseUrlEl = document.getElementById('baseUrl');
 const apiKindEl = document.getElementById('apiKind');
 const downloadsBtn = document.getElementById('downloadsBtn');
 // Note: downloadsPanel/downloadsList are defined after the script tag in index.html.
 // Query them at use-time to avoid nulls on initial load.
 const DRAFT_KEY = 'draft';
+const startParams = new URLSearchParams(location.search);
+const queryWebUrl = startParams.get('webUrl') || startParams.get('plusUrl');
+const queryModeRaw = startParams.get('mode');
+const queryMode = queryModeRaw ? queryModeRaw.toLowerCase() : null;
+const WEB_URL_KEY = 'webLastUrl';
+const LEGACY_PLUS_URL_KEY = 'plusLastUrl';
+
+const MODE_API = 'api';
+const MODE_WEB = 'web';
+const LEGACY_MODE_PLUS = 'plus';
+
+function normalizeMode(value) {
+  if (!value) return null;
+  const lower = value.toLowerCase();
+  if (lower === MODE_API || lower === MODE_WEB) return lower;
+  if (lower === LEGACY_MODE_PLUS) return MODE_WEB;
+  return null;
+}
+
+let lastWebUrl = null;
+let lastPersistedWebUrl = null;
+
+function isPersistableWebUrl(url) {
+  return typeof url === 'string' && /^https?:/i.test(url.trim());
+}
+
+function rememberWebUrl(url) {
+  if (!isPersistableWebUrl(url)) return;
+  lastWebUrl = url.trim();
+}
+
+async function flushWebUrl(force = false) {
+  if (!isPersistableWebUrl(lastWebUrl)) return;
+  if (!force && lastWebUrl === lastPersistedWebUrl) return;
+  if (!window.VoidDesk?.cfg?.set) return;
+  lastPersistedWebUrl = lastWebUrl;
+  try {
+    await Promise.all([
+      window.VoidDesk.cfg.set(WEB_URL_KEY, lastWebUrl),
+      window.VoidDesk.cfg.set(LEGACY_PLUS_URL_KEY, lastWebUrl),
+    ]);
+  } catch (err) {
+    console.warn('Failed to persist Web URL:', err);
+  }
+}
 
 // One-time setup for draft saving and unload
 inputEl.addEventListener('input', () => {
@@ -30,10 +75,15 @@ window.addEventListener('beforeunload', () => {
   window.VoidDesk.cfg.set('history', history);
   window.VoidDesk.cfg.set('scrollPos', chatEl.scrollTop);
   window.VoidDesk.cfg.set(DRAFT_KEY, inputEl.value);
+  const webUrl = webView?.getURL?.() || webView?.src;
+  if (webUrl) {
+    rememberWebUrl(webUrl);
+    flushWebUrl(true).catch(() => {});
+  }
 });
 
 let history = [];            // [{role, content}]
-let mode = 'api';            // 'api' | 'plus'
+let mode = MODE_API;         // 'api' | 'web'
 let scrollPos = 0;           // remember API pane scroll
 let toastsEl;                // lazy mini status area
 
@@ -103,17 +153,43 @@ function stopRefreshAnim() {
   setRefreshDanger(false);
 }
 
+async function performHardReload() {
+  startRefreshAnim();
+  try {
+    const url = webView?.getURL?.() || webView?.src;
+    if (url) rememberWebUrl(url);
+    await flushWebUrl(true);
+    if (window.VoidDesk?.app?.hardReload) {
+      await window.VoidDesk.app.hardReload();
+      return;
+    }
+    if (window.VoidDesk?.app?.relaunch) {
+      await window.VoidDesk.app.relaunch();
+      return;
+    }
+    throw new Error('No hard reload bridge available');
+  } catch (err) {
+    console.warn('Hard reload failed:', err);
+    stopRefreshAnim();
+  }
+}
+
+if (window.VoidDesk?.hotkeys?.onHardReload) {
+  window.VoidDesk.hotkeys.onHardReload(() => { void performHardReload(); });
+}
+
 // Clear any stuck “Hard Reload” state if tab visibility changes
 document.addEventListener('visibilitychange', () => setRefreshDanger(false));
 
 // ---------- Mode switching ----------
 function setMode(next) {
-  mode = next;
+  const resolved = normalizeMode(next) || MODE_API;
+  mode = resolved;
 
-  apiPane?.classList.toggle('hidden', mode !== 'api');
-  plusPane?.classList.toggle('hidden', mode !== 'plus');
-  apiBtn?.classList.toggle('active', mode === 'api');
-  plusBtn?.classList.toggle('active', mode === 'plus');
+  apiPane?.classList.toggle('hidden', mode !== MODE_API);
+  webPane?.classList.toggle('hidden', mode !== MODE_WEB);
+  apiBtn?.classList.toggle('active', mode === MODE_API);
+  webBtn?.classList.toggle('active', mode === MODE_WEB);
 
   const apiControls = [
     apiKeyEl?.closest('label'),
@@ -125,13 +201,13 @@ function setMode(next) {
   ];
   for (const el of apiControls) if (el) el.style.display = (mode === 'api') ? 'flex' : 'none';
 
-  const plusControls = [logoutPlusBtn];
-  for (const el of plusControls) if (el) el.style.display = (mode === 'plus') ? 'flex' : 'none';
+  const webControls = [logoutWebBtn];
+  for (const el of webControls) if (el) el.style.display = (mode === MODE_WEB) ? 'flex' : 'none';
 
   const footer = document.querySelector('footer');
   if (footer) footer.style.display = (mode === 'api') ? 'flex' : 'none';
 
-  if (mode === 'api') {
+  if (mode === MODE_API) {
     inputEl?.focus();
     chatEl.scrollTop = scrollPos;
   }
@@ -172,7 +248,18 @@ async function loadCfg() {
     try { inputEl.setSelectionRange(draft.length, draft.length); } catch {}
   }
 
-  const [k, m, s, savedHistory, savedMode, baseUrl, apiKind, savedScroll] = await Promise.all([
+  const [
+    k,
+    m,
+    s,
+    savedHistory,
+    savedMode,
+    baseUrl,
+    apiKind,
+    savedScroll,
+    savedWebUrl,
+    savedLegacyPlusUrl,
+  ] = await Promise.all([
     window.VoidDesk.cfg.get('apiKey'),
     window.VoidDesk.cfg.get('model'),
     window.VoidDesk.cfg.get('system'),
@@ -181,6 +268,8 @@ async function loadCfg() {
     window.VoidDesk.cfg.get('baseUrl'),
     window.VoidDesk.cfg.get('apiKind'),
     window.VoidDesk.cfg.get('scrollPos'),
+    window.VoidDesk.cfg.get(WEB_URL_KEY),
+    window.VoidDesk.cfg.get(LEGACY_PLUS_URL_KEY),
   ]);
 
   apiKeyEl.value = k || '';
@@ -194,14 +283,63 @@ async function loadCfg() {
 
   if (typeof savedScroll === 'number') scrollPos = savedScroll;
 
-  setMode(savedMode || 'plus'); // default to Plus
+  const storedWebUrlRaw = typeof savedWebUrl === 'string' ? savedWebUrl.trim() : '';
+  const legacyWebUrlRaw = typeof savedLegacyPlusUrl === 'string' ? savedLegacyPlusUrl.trim() : '';
+  const requestedWebUrl = typeof queryWebUrl === 'string' ? queryWebUrl.trim() : '';
 
-  // Keep animation in sync with Plus WebView network state
-  if (plusView) {
-    plusView.addEventListener('did-start-loading', startRefreshAnim);
-    plusView.addEventListener('did-stop-loading', stopRefreshAnim);
-    plusView.addEventListener('did-finish-load', stopRefreshAnim);
-    plusView.addEventListener('did-fail-load', stopRefreshAnim);
+  const storedWebUrl = isPersistableWebUrl(storedWebUrlRaw) ? storedWebUrlRaw : '';
+  const legacyWebUrl = isPersistableWebUrl(legacyWebUrlRaw) ? legacyWebUrlRaw : '';
+
+  const persistedWebUrl = storedWebUrl || legacyWebUrl;
+  if (isPersistableWebUrl(persistedWebUrl)) {
+    lastPersistedWebUrl = persistedWebUrl;
+  }
+
+  const initialWebUrl = isPersistableWebUrl(requestedWebUrl)
+    ? requestedWebUrl
+    : (persistedWebUrl || null);
+
+  if (webView && initialWebUrl) {
+    if (webView.src !== initialWebUrl) {
+      webView.src = initialWebUrl;
+    }
+    rememberWebUrl(initialWebUrl);
+  }
+
+  const initialMode = normalizeMode(queryMode)
+    || normalizeMode(savedMode)
+    || MODE_WEB;
+
+  setMode(initialMode);
+
+  if (isPersistableWebUrl(requestedWebUrl) && initialMode !== MODE_WEB) {
+    setMode(MODE_WEB);
+  }
+
+  // Keep animation in sync with the Web view network state
+  if (webView) {
+    webView.addEventListener('did-start-loading', startRefreshAnim);
+    webView.addEventListener('did-stop-loading', stopRefreshAnim);
+    webView.addEventListener('did-finish-load', stopRefreshAnim);
+    webView.addEventListener('did-fail-load', stopRefreshAnim);
+
+    const trackWebNavigation = (event) => {
+      const navUrl = event?.url || webView?.getURL?.();
+      if (!navUrl) return;
+      rememberWebUrl(navUrl);
+      flushWebUrl().catch(() => {});
+    };
+
+    webView.addEventListener('did-navigate', trackWebNavigation);
+    webView.addEventListener('did-navigate-in-page', trackWebNavigation);
+    webView.addEventListener('did-redirect-navigation', trackWebNavigation);
+    webView.addEventListener('page-title-updated', trackWebNavigation);
+    webView.addEventListener('dom-ready', () => {
+      const navUrl = webView?.getURL?.();
+      if (!navUrl) return;
+      rememberWebUrl(navUrl);
+      flushWebUrl().catch(() => {});
+    });
   }
 }
 
@@ -226,37 +364,31 @@ clearBtn.addEventListener('click', async () => {
   await saveCfg();
 });
 
-apiBtn.addEventListener('click', () => setMode('api'));
-plusBtn.addEventListener('click', () => setMode('plus'));
+apiBtn.addEventListener('click', () => setMode(MODE_API));
+webBtn.addEventListener('click', () => setMode(MODE_WEB));
 
-logoutPlusBtn.addEventListener('click', async () => {
-  await window.VoidDesk.plus.logout();
-  if (plusView) plusView.loadURL('https://chat.openai.com');
+logoutWebBtn.addEventListener('click', async () => {
+  const logout = window.VoidDesk.web?.logout || window.VoidDesk.plus?.logout;
+  await logout?.();
+  if (webView) webView.loadURL('https://chat.openai.com');
 });
 
 // Universal refresh (soft / hard via Shift)
 refreshBtn.addEventListener('click', async (e) => {
-  // Shift+Click → Hard reload (ignores cache for Plus or reloads the whole app)
+  // Shift+Click → Hard reload (ignores cache for Web or reloads the whole app)
   if (e.shiftKey) {
-    if (mode === 'plus' && plusView) {
-      startRefreshAnim();
-      plusView.reloadIgnoringCache();
-      return;
-    }
-    // Actually relaunch the app to squash weirdness, restore same window
-    startRefreshAnim();
-    await window.VoidDesk.app.relaunch();
+    await performHardReload();
     return;
   }
 
   // Normal soft refresh
-  if (mode === 'api') {
+  if (mode === MODE_API) {
     startRefreshAnim();
     renderHistory();
     await new Promise(r => setTimeout(r, 1400)); // show a couple of pings
     stopRefreshAnim();
-  } else if (mode === 'plus' && plusView) {
-    plusView.reload(); // did-start/stop will control the animation
+  } else if (mode === MODE_WEB && webView) {
+    webView.reload(); // did-start/stop will control the animation
   }
 });
 
@@ -265,10 +397,10 @@ sendOtherBtn.addEventListener('click', () => {
   const sel = window.getSelection().toString() || inputEl.value;
   if (!sel) return;
 
-  if (mode === 'api') {
+  if (mode === MODE_API) {
     const payload = JSON.stringify(sel);
-    if (plusView) {
-      plusView.executeJavaScript(`
+    if (webView) {
+      webView.executeJavaScript(`
             (function () {
               const t = ${payload};
               const active = document.activeElement;
@@ -285,32 +417,26 @@ sendOtherBtn.addEventListener('click', () => {
             })();
           `);
     }
-    setMode('plus');
+    setMode(MODE_WEB);
   } else {
     inputEl.value += (inputEl.value ? '\n\n' : '') + sel;
-    setMode('api');
+    setMode(MODE_API);
     inputEl.focus();
   }
 });
 
 // ---------- Hotkeys ----------
-window.addEventListener('keydown', (e) => {
+window.addEventListener('keydown', async (e) => {
   // Send to other (Ctrl/Cmd+Shift+S)
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key || '').toLowerCase() === 's') {
     e.preventDefault();
     sendOtherBtn.click();
     return;
   }
   // Hard reload (Ctrl/Cmd+Shift+R)
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'r') {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key || '').toLowerCase() === 'r') {
     e.preventDefault();
-    if (mode === 'plus' && plusView) {
-      startRefreshAnim();
-      plusView.reloadIgnoringCache();
-    } else {
-      startRefreshAnim();
-      window.VoidDesk.app.relaunch();
-    }
+    await performHardReload();
     return;
   }
   // Downloads panel (Ctrl/Cmd+J)
@@ -740,12 +866,3 @@ window.addEventListener('DOMContentLoaded', () => {
   loadSettings().catch(() => {});
 });
 
-const params = new URLSearchParams(location.search);
-const plusTargetUrl = params.get('plusUrl');
-if (plusTargetUrl) {
-  const plusView = document.getElementById('plusView');
-  if (plusView) {
-    plusView.src = plusTargetUrl;
-    setMode('plus');
-  }
-}
