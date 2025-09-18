@@ -130,6 +130,24 @@ let scrollPos = 0;           // remember API pane scroll
 let toastsEl;                // lazy mini status area
 let lastNonApiMode = MODE_WEB;
 
+function ensureToastsEl() {
+  if (!toastsEl) toastsEl = document.getElementById('toasts');
+  return toastsEl;
+}
+
+function createToast(text, { duration = 7000 } = {}) {
+  const container = ensureToastsEl();
+  if (!container) return null;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  container.appendChild(el);
+  if (duration > 0) {
+    setTimeout(() => el.remove(), duration);
+  }
+  return el;
+}
+
 // ---------- helper: stable restart of the refresh animation ----------
 // Helper to toggle "Hard Reload" affordance
 function setRefreshDanger(on) {
@@ -293,7 +311,7 @@ function pushMsg(role, content) {
 
 // ---------- Config load/save ----------
 async function loadCfg() {
-  toastsEl = document.getElementById('toasts');
+  ensureToastsEl();
   const draft = await window.VoidDesk.cfg.get(DRAFT_KEY);
   if (draft) {
     inputEl.value = draft;
@@ -428,7 +446,16 @@ async function loadCfg() {
     codexView.addEventListener('did-start-loading', startRefreshAnim);
     codexView.addEventListener('did-stop-loading', stopRefreshAnim);
     codexView.addEventListener('did-finish-load', stopRefreshAnim);
-    codexView.addEventListener('did-fail-load', stopRefreshAnim);
+    codexView.addEventListener('did-fail-load', (event) => {
+      stopRefreshAnim();
+      try {
+        if (event && event.isMainFrame !== false) {
+          if (event.errorCode === -3 || event.errorCode === -27) return; // Ignore abort/back-forward and offline reloads
+          const desc = event.errorDescription || `error ${event.errorCode}`;
+          createToast(`Codex failed to load: ${desc}`, { duration: 8000 });
+        }
+      } catch {}
+    });
 
     const trackCodexNavigation = (event) => {
       const navUrl = event?.url || codexView?.getURL?.();
@@ -762,14 +789,6 @@ window.addEventListener('keyup', (e) => {
 });
 
 // ---------- Download toasts ----------
-const mk = (t) => {
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.textContent = t;
-  toastsEl?.appendChild(el);
-  setTimeout(() => el.remove(), 7000);
-  return el;
-};
 const formatPct = (r, t) => {
   if (!t || t <= 0) return '';
   const pct = Math.min(100, Math.round((r / t) * 100));
@@ -777,7 +796,8 @@ const formatPct = (r, t) => {
 };
 const activeToasts = new Map();
 window.VoidDesk.downloads.onStart(({ id, filename }) => {
-  activeToasts.set(id, mk(`Downloading ${filename}…`));
+  const toast = createToast(`Downloading ${filename}…`, { duration: 0 });
+  if (toast) activeToasts.set(id, toast);
 });
 window.VoidDesk.downloads.onProgress(({ id, receivedBytes, totalBytes }) => {
   const el = activeToasts.get(id);

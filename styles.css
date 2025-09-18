@@ -173,8 +173,15 @@ main {
 
 .pane {
   height: 100%;
-  display: flex;       
+  display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.pane webview {
+  flex: 1;
+  min-height: 0;
 }
 
 .hidden { display: none; }
