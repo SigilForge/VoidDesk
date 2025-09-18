@@ -6,6 +6,7 @@ const Store = require('electron-store');
 const store = new Store({ name: 'voiddesk' });
 const DEFAULT_SPELL_LANGS = store.get('spellLangs') || ['en-US'];
 const WEB_PARTITION = 'persist:voiddesk-plus'; // legacy name retained to preserve existing logins
+const CODEX_PARTITION = 'persist:voiddesk-codex';
 
 if (process.platform === 'win32') app.setAppUserModelId('VoidDesk');
 
@@ -197,6 +198,8 @@ function createWindow () {
   // Attach to Web view session immediately
   const webSession = session.fromPartition(WEB_PARTITION);
   enableSpellcheckForSession(webSession);
+  const codexSession = session.fromPartition(CODEX_PARTITION);
+  enableSpellcheckForSession(codexSession);
 
   // Attach handlers for any webview we embed (downloads + window.open)
   win.webContents.on('did-attach-webview', (_event, wc) => {
@@ -279,7 +282,11 @@ function openWebWindow(targetUrl) {
 
 // Apply spellcheck languages to both sessions, persist in store
 function setSpellLangs(langs) {
-  const sessions = [session.defaultSession, session.fromPartition(WEB_PARTITION)];
+  const sessions = [
+    session.defaultSession,
+    session.fromPartition(WEB_PARTITION),
+    session.fromPartition(CODEX_PARTITION)
+  ];
   sessions.forEach(s => { try { s.setSpellCheckerLanguages(langs); } catch {} });
   store.set('spellLangs', langs);
 }
@@ -303,14 +310,19 @@ app.whenReady().then(() => {
   // Enable spellcheck for the Web mode session
   const webSession = session.fromPartition(WEB_PARTITION);
   enableSpellcheckForSession(webSession);
+  const codexSession = session.fromPartition(CODEX_PARTITION);
+  enableSpellcheckForSession(codexSession);
 
   // Force direct connections (silence WPAD self-signed noise)
   setDirectProxy(session.defaultSession);
   setDirectProxy(webSession);
+  setDirectProxy(codexSession);
 
   // Attach spellcheck context menu for any web-contents created under the Web partition
   app.on('web-contents-created', (_event, wc) => {
-    if (wc.getType() === 'webview' && wc.session.partition === WEB_PARTITION) {
+    if (wc.getType() !== 'webview') return;
+    const partition = wc.session?.partition;
+    if (partition === WEB_PARTITION || partition === CODEX_PARTITION) {
       attachSpellcheckContextMenu(wc, wc.session);
     }
   });
@@ -318,6 +330,7 @@ app.whenReady().then(() => {
   // Setup better download pipeline for both sessions
   setupDownloadHandling(session.defaultSession, 'download');
   setupDownloadHandling(webSession, ['downloadWeb', 'downloadPlus']);
+  setupDownloadHandling(codexSession, 'downloadCodex');
 });
 
 app.on('window-all-closed', () => {
@@ -361,8 +374,17 @@ async function clearWebPartition() {
   return true;
 }
 
+async function clearCodexPartition() {
+  const codexSession = session.fromPartition(CODEX_PARTITION);
+  await codexSession.clearStorageData({
+    storages: ['cookies', 'localstorage', 'serviceworkers', 'caches', 'indexeddb', 'websql']
+  });
+  return true;
+}
+
 ipcMain.handle('web:logout', clearWebPartition);
 ipcMain.handle('plus:logout', clearWebPartition);
+ipcMain.handle('codex:logout', clearCodexPartition);
 
 // Persisted download history
 const DOWNLOAD_HISTORY_KEY = 'downloadHistory';

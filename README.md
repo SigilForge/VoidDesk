@@ -1,9 +1,10 @@
 README.md
 # VoidDesk (Hybrid)
 
-Ultra-minimal Electron client with two modes:
+Ultra-minimal Electron client with three modes:
 - **API Mode** — local streaming client for OpenAI (or any compatible API)
 - **Web Mode** — embedded WebView of ChatGPT (uses your normal login & Plus features)
+- **Codex Mode** — embedded OpenAI Playground session for rapid code & prompt testing
 
 ## Setup
 1. Install Node 18+.
@@ -11,8 +12,9 @@ Ultra-minimal Electron client with two modes:
 3. `npm run start`
 
 ## Usage
-- Toggle top-left: **🜏 API** ↔ **☁ Web**.
+- Toggle top-left between **🜏 API**, **☁ Web**, and **⌘ Codex**.
 - **Web Mode** persists your login (use *Logout Web* if needed).
+- **Codex Mode** keeps its own session and last URL (use *Logout Codex* if you need a clean login).
 - **Send → Other (Ctrl/Cmd+Shift+S)** moves selected text between modes.
 
 ## Notes

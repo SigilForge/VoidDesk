@@ -8,12 +8,16 @@ const saveCfgBtn = document.getElementById('saveCfg');
 const clearBtn = document.getElementById('clear');
 const apiBtn = document.getElementById('apiMode');
 const webBtn = document.getElementById('webMode');
+const codexBtn = document.getElementById('codexMode');
 const sendOtherBtn = document.getElementById('sendOther');
 const logoutWebBtn = document.getElementById('logoutWeb');
+const logoutCodexBtn = document.getElementById('logoutCodex');
 const refreshBtn = document.getElementById('refresh');
 const apiPane = document.getElementById('apiPane');
 const webPane = document.getElementById('webPane');
+const codexPane = document.getElementById('codexPane');
 const webView = document.getElementById('webView') || null;
+const codexView = document.getElementById('codexView') || null;
 const baseUrlEl = document.getElementById('baseUrl');
 const apiKindEl = document.getElementById('apiKind');
 const downloadsBtn = document.getElementById('downloadsBtn');
@@ -22,37 +26,50 @@ const downloadsBtn = document.getElementById('downloadsBtn');
 const DRAFT_KEY = 'draft';
 const startParams = new URLSearchParams(location.search);
 const queryWebUrl = startParams.get('webUrl') || startParams.get('plusUrl');
+const queryCodexUrl = startParams.get('codexUrl') || startParams.get('playgroundUrl');
 const queryModeRaw = startParams.get('mode');
 const queryMode = queryModeRaw ? queryModeRaw.toLowerCase() : null;
 const WEB_URL_KEY = 'webLastUrl';
 const LEGACY_PLUS_URL_KEY = 'plusLastUrl';
+const CODEX_URL_KEY = 'codexLastUrl';
+const LEGACY_PLAYGROUND_URL_KEY = 'playgroundLastUrl';
 
 const MODE_API = 'api';
 const MODE_WEB = 'web';
 const LEGACY_MODE_PLUS = 'plus';
+const MODE_CODEX = 'codex';
+const LEGACY_MODE_PLAYGROUND = 'playground';
 
 function normalizeMode(value) {
   if (!value) return null;
   const lower = value.toLowerCase();
-  if (lower === MODE_API || lower === MODE_WEB) return lower;
+  if (lower === MODE_API || lower === MODE_WEB || lower === MODE_CODEX) return lower;
   if (lower === LEGACY_MODE_PLUS) return MODE_WEB;
+  if (lower === LEGACY_MODE_PLAYGROUND) return MODE_CODEX;
   return null;
 }
 
 let lastWebUrl = null;
 let lastPersistedWebUrl = null;
 
-function isPersistableWebUrl(url) {
+let lastCodexUrl = null;
+let lastPersistedCodexUrl = null;
+
+function isPersistableHttpUrl(url) {
   return typeof url === 'string' && /^https?:/i.test(url.trim());
 }
 
+function isPersistableWebUrl(url) {
+  return isPersistableHttpUrl(url);
+}
+
 function rememberWebUrl(url) {
-  if (!isPersistableWebUrl(url)) return;
+  if (!isPersistableHttpUrl(url)) return;
   lastWebUrl = url.trim();
 }
 
 async function flushWebUrl(force = false) {
-  if (!isPersistableWebUrl(lastWebUrl)) return;
+  if (!isPersistableHttpUrl(lastWebUrl)) return;
   if (!force && lastWebUrl === lastPersistedWebUrl) return;
   if (!window.VoidDesk?.cfg?.set) return;
   lastPersistedWebUrl = lastWebUrl;
@@ -63,6 +80,26 @@ async function flushWebUrl(force = false) {
     ]);
   } catch (err) {
     console.warn('Failed to persist Web URL:', err);
+  }
+}
+
+function rememberCodexUrl(url) {
+  if (!isPersistableHttpUrl(url)) return;
+  lastCodexUrl = url.trim();
+}
+
+async function flushCodexUrl(force = false) {
+  if (!isPersistableHttpUrl(lastCodexUrl)) return;
+  if (!force && lastCodexUrl === lastPersistedCodexUrl) return;
+  if (!window.VoidDesk?.cfg?.set) return;
+  lastPersistedCodexUrl = lastCodexUrl;
+  try {
+    await Promise.all([
+      window.VoidDesk.cfg.set(CODEX_URL_KEY, lastCodexUrl),
+      window.VoidDesk.cfg.set(LEGACY_PLAYGROUND_URL_KEY, lastCodexUrl),
+    ]);
+  } catch (err) {
+    console.warn('Failed to persist Codex URL:', err);
   }
 }
 
@@ -80,12 +117,18 @@ window.addEventListener('beforeunload', () => {
     rememberWebUrl(webUrl);
     flushWebUrl(true).catch(() => {});
   }
+  const codexUrl = codexView?.getURL?.() || codexView?.src;
+  if (codexUrl) {
+    rememberCodexUrl(codexUrl);
+    flushCodexUrl(true).catch(() => {});
+  }
 });
 
 let history = [];            // [{role, content}]
-let mode = MODE_API;         // 'api' | 'web'
+let mode = MODE_API;         // 'api' | 'web' | 'codex'
 let scrollPos = 0;           // remember API pane scroll
 let toastsEl;                // lazy mini status area
+let lastNonApiMode = MODE_WEB;
 
 // ---------- helper: stable restart of the refresh animation ----------
 // Helper to toggle "Hard Reload" affordance
@@ -159,6 +202,9 @@ async function performHardReload() {
     const url = webView?.getURL?.() || webView?.src;
     if (url) rememberWebUrl(url);
     await flushWebUrl(true);
+    const codexUrl = codexView?.getURL?.() || codexView?.src;
+    if (codexUrl) rememberCodexUrl(codexUrl);
+    await flushCodexUrl(true);
     if (window.VoidDesk?.app?.hardReload) {
       await window.VoidDesk.app.hardReload();
       return;
@@ -188,8 +234,10 @@ function setMode(next) {
 
   apiPane?.classList.toggle('hidden', mode !== MODE_API);
   webPane?.classList.toggle('hidden', mode !== MODE_WEB);
+  codexPane?.classList.toggle('hidden', mode !== MODE_CODEX);
   apiBtn?.classList.toggle('active', mode === MODE_API);
   webBtn?.classList.toggle('active', mode === MODE_WEB);
+  codexBtn?.classList.toggle('active', mode === MODE_CODEX);
 
   const apiControls = [
     apiKeyEl?.closest('label'),
@@ -199,17 +247,22 @@ function setMode(next) {
     document.getElementById('clear'),
     document.getElementById('system')?.closest('label')
   ];
-  for (const el of apiControls) if (el) el.style.display = (mode === 'api') ? 'flex' : 'none';
+  for (const el of apiControls) if (el) el.style.display = (mode === MODE_API) ? 'flex' : 'none';
 
   const webControls = [logoutWebBtn];
   for (const el of webControls) if (el) el.style.display = (mode === MODE_WEB) ? 'flex' : 'none';
 
+  const codexControls = [logoutCodexBtn];
+  for (const el of codexControls) if (el) el.style.display = (mode === MODE_CODEX) ? 'flex' : 'none';
+
   const footer = document.querySelector('footer');
-  if (footer) footer.style.display = (mode === 'api') ? 'flex' : 'none';
+  if (footer) footer.style.display = (mode === MODE_API) ? 'flex' : 'none';
 
   if (mode === MODE_API) {
     inputEl?.focus();
     chatEl.scrollTop = scrollPos;
+  } else if (mode === MODE_WEB || mode === MODE_CODEX) {
+    lastNonApiMode = mode;
   }
 
   // Only persist if changed
@@ -259,6 +312,8 @@ async function loadCfg() {
     savedScroll,
     savedWebUrl,
     savedLegacyPlusUrl,
+    savedCodexUrl,
+    savedLegacyPlaygroundUrl,
   ] = await Promise.all([
     window.VoidDesk.cfg.get('apiKey'),
     window.VoidDesk.cfg.get('model'),
@@ -270,6 +325,8 @@ async function loadCfg() {
     window.VoidDesk.cfg.get('scrollPos'),
     window.VoidDesk.cfg.get(WEB_URL_KEY),
     window.VoidDesk.cfg.get(LEGACY_PLUS_URL_KEY),
+    window.VoidDesk.cfg.get(CODEX_URL_KEY),
+    window.VoidDesk.cfg.get(LEGACY_PLAYGROUND_URL_KEY),
   ]);
 
   apiKeyEl.value = k || '';
@@ -286,13 +343,23 @@ async function loadCfg() {
   const storedWebUrlRaw = typeof savedWebUrl === 'string' ? savedWebUrl.trim() : '';
   const legacyWebUrlRaw = typeof savedLegacyPlusUrl === 'string' ? savedLegacyPlusUrl.trim() : '';
   const requestedWebUrl = typeof queryWebUrl === 'string' ? queryWebUrl.trim() : '';
+  const storedCodexUrlRaw = typeof savedCodexUrl === 'string' ? savedCodexUrl.trim() : '';
+  const legacyCodexUrlRaw = typeof savedLegacyPlaygroundUrl === 'string' ? savedLegacyPlaygroundUrl.trim() : '';
+  const requestedCodexUrl = typeof queryCodexUrl === 'string' ? queryCodexUrl.trim() : '';
 
-  const storedWebUrl = isPersistableWebUrl(storedWebUrlRaw) ? storedWebUrlRaw : '';
-  const legacyWebUrl = isPersistableWebUrl(legacyWebUrlRaw) ? legacyWebUrlRaw : '';
+  const storedWebUrl = isPersistableHttpUrl(storedWebUrlRaw) ? storedWebUrlRaw : '';
+  const legacyWebUrl = isPersistableHttpUrl(legacyWebUrlRaw) ? legacyWebUrlRaw : '';
+  const storedCodexUrl = isPersistableHttpUrl(storedCodexUrlRaw) ? storedCodexUrlRaw : '';
+  const legacyCodexUrl = isPersistableHttpUrl(legacyCodexUrlRaw) ? legacyCodexUrlRaw : '';
 
   const persistedWebUrl = storedWebUrl || legacyWebUrl;
+  const persistedCodexUrl = storedCodexUrl || legacyCodexUrl;
   if (isPersistableWebUrl(persistedWebUrl)) {
     lastPersistedWebUrl = persistedWebUrl;
+  }
+
+  if (isPersistableHttpUrl(persistedCodexUrl)) {
+    lastPersistedCodexUrl = persistedCodexUrl;
   }
 
   const initialWebUrl = isPersistableWebUrl(requestedWebUrl)
@@ -306,6 +373,17 @@ async function loadCfg() {
     rememberWebUrl(initialWebUrl);
   }
 
+  const initialCodexUrl = isPersistableHttpUrl(requestedCodexUrl)
+    ? requestedCodexUrl
+    : (persistedCodexUrl || null);
+
+  if (codexView && initialCodexUrl) {
+    if (codexView.src !== initialCodexUrl) {
+      codexView.src = initialCodexUrl;
+    }
+    rememberCodexUrl(initialCodexUrl);
+  }
+
   const initialMode = normalizeMode(queryMode)
     || normalizeMode(savedMode)
     || MODE_WEB;
@@ -314,6 +392,10 @@ async function loadCfg() {
 
   if (isPersistableWebUrl(requestedWebUrl) && initialMode !== MODE_WEB) {
     setMode(MODE_WEB);
+  }
+
+  if (isPersistableHttpUrl(requestedCodexUrl) && mode !== MODE_CODEX) {
+    setMode(MODE_CODEX);
   }
 
   // Keep animation in sync with the Web view network state
@@ -341,6 +423,31 @@ async function loadCfg() {
       flushWebUrl().catch(() => {});
     });
   }
+
+  if (codexView) {
+    codexView.addEventListener('did-start-loading', startRefreshAnim);
+    codexView.addEventListener('did-stop-loading', stopRefreshAnim);
+    codexView.addEventListener('did-finish-load', stopRefreshAnim);
+    codexView.addEventListener('did-fail-load', stopRefreshAnim);
+
+    const trackCodexNavigation = (event) => {
+      const navUrl = event?.url || codexView?.getURL?.();
+      if (!navUrl) return;
+      rememberCodexUrl(navUrl);
+      flushCodexUrl().catch(() => {});
+    };
+
+    codexView.addEventListener('did-navigate', trackCodexNavigation);
+    codexView.addEventListener('did-navigate-in-page', trackCodexNavigation);
+    codexView.addEventListener('did-redirect-navigation', trackCodexNavigation);
+    codexView.addEventListener('page-title-updated', trackCodexNavigation);
+    codexView.addEventListener('dom-ready', () => {
+      const navUrl = codexView?.getURL?.();
+      if (!navUrl) return;
+      rememberCodexUrl(navUrl);
+      flushCodexUrl().catch(() => {});
+    });
+  }
 }
 
 async function saveCfg() {
@@ -366,11 +473,18 @@ clearBtn.addEventListener('click', async () => {
 
 apiBtn.addEventListener('click', () => setMode(MODE_API));
 webBtn.addEventListener('click', () => setMode(MODE_WEB));
+codexBtn?.addEventListener('click', () => setMode(MODE_CODEX));
 
 logoutWebBtn.addEventListener('click', async () => {
   const logout = window.VoidDesk.web?.logout || window.VoidDesk.plus?.logout;
   await logout?.();
   if (webView) webView.loadURL('https://chat.openai.com');
+});
+
+logoutCodexBtn?.addEventListener('click', async () => {
+  const logout = window.VoidDesk.codex?.logout;
+  await logout?.();
+  if (codexView) codexView.loadURL('https://platform.openai.com/playground');
 });
 
 // Universal refresh (soft / hard via Shift)
@@ -389,6 +503,8 @@ refreshBtn.addEventListener('click', async (e) => {
     stopRefreshAnim();
   } else if (mode === MODE_WEB && webView) {
     webView.reload(); // did-start/stop will control the animation
+  } else if (mode === MODE_CODEX && codexView) {
+    codexView.reload();
   }
 });
 
@@ -399,25 +515,30 @@ sendOtherBtn.addEventListener('click', () => {
 
   if (mode === MODE_API) {
     const payload = JSON.stringify(sel);
-    if (webView) {
-      webView.executeJavaScript(`
-            (function () {
-              const t = ${payload};
-              const active = document.activeElement;
-              if (active) {
-                if (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') {
-                  const start = active.selectionStart ?? active.value.length;
-                  const end = active.selectionEnd ?? active.value.length;
-                  active.setRangeText((start ? "\\n\\n" : "") + t, start, end, 'end');
-                  active.dispatchEvent(new Event('input', { bubbles: true }));
-                } else if (active.isContentEditable) {
-                  active.textContent += (active.textContent ? "\\n\\n" : "") + t;
-                }
-              }
-            })();
-          `);
+    const script = `
+      (function () {
+        const t = ${payload};
+        const active = document.activeElement;
+        if (active) {
+          if (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') {
+            const start = active.selectionStart ?? active.value.length;
+            const end = active.selectionEnd ?? active.value.length;
+            active.setRangeText((start ? "\\n\\n" : "") + t, start, end, 'end');
+            active.dispatchEvent(new Event('input', { bubbles: true }));
+          } else if (active.isContentEditable) {
+            active.textContent += (active.textContent ? "\\n\\n" : "") + t;
+          }
+        }
+      })();
+    `;
+
+    const targetMode = (lastNonApiMode === MODE_CODEX && codexView) ? MODE_CODEX : MODE_WEB;
+    if (targetMode === MODE_CODEX && codexView) {
+      codexView.executeJavaScript(script).catch(() => {});
+    } else if (webView) {
+      webView.executeJavaScript(script).catch(() => {});
     }
-    setMode(MODE_WEB);
+    setMode(targetMode);
   } else {
     inputEl.value += (inputEl.value ? '\n\n' : '') + sel;
     setMode(MODE_API);
@@ -448,7 +569,7 @@ window.addEventListener('keydown', async (e) => {
 
 // Persist scroll position
 chatEl.addEventListener('scroll', () => {
-  if (mode === 'api') scrollPos = chatEl.scrollTop;
+  if (mode === MODE_API) scrollPos = chatEl.scrollTop;
 });
 
 // ---------- API helpers ----------

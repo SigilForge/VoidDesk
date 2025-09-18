@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('VoidDesk', {
   plus: {
     logout: () => ipcRenderer.invoke('plus:logout')
   },
+  codex: {
+    logout: () => ipcRenderer.invoke('codex:logout')
+  },
   app: {
     hardReload: () => ipcRenderer.invoke('app:hardReload'),
     relaunch: () => ipcRenderer.invoke('app:relaunch')
@@ -21,16 +24,19 @@ contextBridge.exposeInMainWorld('VoidDesk', {
       ipcRenderer.on('download:progress', (_e, d) => fn(d));
       ipcRenderer.on('downloadWeb:progress', (_e, d) => fn(d));
       ipcRenderer.on('downloadPlus:progress', (_e, d) => fn(d));
+      ipcRenderer.on('downloadCodex:progress', (_e, d) => fn(d));
     },
     onStart: (fn) => {
       ipcRenderer.on('download:start', (_e, d) => fn(d));
       ipcRenderer.on('downloadWeb:start', (_e, d) => fn(d));
       ipcRenderer.on('downloadPlus:start', (_e, d) => fn(d));
+      ipcRenderer.on('downloadCodex:start', (_e, d) => fn(d));
     },
     onDone: (fn) => {
       ipcRenderer.on('download:done', (_e, d) => fn(d));
       ipcRenderer.on('downloadWeb:done', (_e, d) => fn(d));
       ipcRenderer.on('downloadPlus:done', (_e, d) => fn(d));
+      ipcRenderer.on('downloadCodex:done', (_e, d) => fn(d));
     },
     // actions
     start: (url) => ipcRenderer.send('download:url', url),

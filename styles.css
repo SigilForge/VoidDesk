@@ -62,7 +62,7 @@ label input, select {
   padding: 6px 8px;
 }
 
-#saveCfg, #clear, #send, #apiMode, #webMode, #sendOther, #logoutWeb {
+#saveCfg, #clear, #send, #apiMode, #webMode, #codexMode, #sendOther, #logoutWeb, #logoutCodex {
   background: #1a1f33;
   color: var(--ink);
   border: 1px solid #2a2f45;
@@ -70,7 +70,7 @@ label input, select {
   padding: 6px 10px;
   cursor: pointer;
 }
-#saveCfg:hover, #clear:hover, #send:hover, .mode:hover, #sendOther:hover, #logoutWeb:hover {
+#saveCfg:hover, #clear:hover, #send:hover, .mode:hover, #sendOther:hover, #logoutWeb:hover, #logoutCodex:hover {
   filter: brightness(1.15);
 }
 
