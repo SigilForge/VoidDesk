@@ -21,7 +21,7 @@ Ultra-minimal Electron client with three modes:
 ## Notes
 - Config/history stored via `electron-store`.
 - Default start in **Web Mode** (can change in settings by editing `mode` in store).
-- WebView CSP allows only OpenAI domains.
+- WebView CSP allows OpenAI plus other HTTPS frames so Codex repo links (e.g. GitHub) load inside the app.
 - GitHub tokens are stored locally in the app config when supplied for private repo access.
 
 ## Packaged builds
