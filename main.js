@@ -5,6 +5,8 @@ const Store = require('electron-store');
 
 const store = new Store({ name: 'voiddesk' });
 const DEFAULT_SPELL_LANGS = store.get('spellLangs') || ['en-US'];
+const WEB_PARTITION = 'persist:voiddesk-plus'; // legacy name retained to preserve existing logins
+const CODEX_PARTITION = 'persist:voiddesk-codex';
 
 if (process.platform === 'win32') app.setAppUserModelId('VoidDesk');
 
@@ -102,10 +104,10 @@ function attachSpellcheckContextMenu(webContents, ses) {
       template.push({
         label: 'Open Link in New Window',
         click: () => {
-          if (isPlusUrl(params.linkURL)) {
-            openPlusWindow(params.linkURL);
+          if (isWebChatUrl(params.linkURL)) {
+            openWebWindow(params.linkURL);
           } else {
-            // Keep non‑Plus links external to avoid becoming a general browser
+            // Keep non‑Web links external to avoid becoming a general browser
             shell.openExternal(params.linkURL);
           }
         }
@@ -175,7 +177,49 @@ function markForceAsk(wc, url) {
   } catch {}
 }
 
-function createWindow () {
+function setupWebviewHandlers(wc) {
+  attachSpellcheckContextMenu(wc, wc.session);
+
+  wc.on('before-input-event', (event, input) => {
+    try {
+      if (input.isAutoRepeat) return;
+      const key = (input.key || '').toLowerCase();
+      const isHardReloadCombo =
+        input.type === 'keyDown' &&
+        input.shift &&
+        (input.control || input.meta) &&
+        (key === 'r' || input.code === 'KeyR');
+      if (!isHardReloadCombo) return;
+      event.preventDefault();
+      const host = wc.hostWebContents || wc.getOwnerBrowserWindow()?.webContents;
+      host?.send('hotkey:hardReload', { source: 'web' });
+    } catch {}
+  });
+
+  wc.setWindowOpenHandler(({ url }) => {
+    const httpFileLike = /^https?:/i.test(url) &&
+      /\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url);
+    if (httpFileLike) {
+      // Deny the popup and download directly in this WebContents
+      wc.downloadURL(url);
+      return { action: 'deny' };
+    }
+    // Allow blob:/data: popups to proceed so Chromium can handle the download natively
+    if (url.startsWith('blob:') || url.startsWith('data:')) {
+      return { action: 'allow' };
+    }
+    if (isWebChatUrl(url)) {
+      openWebWindow(url);           // stays logged in via the dedicated Web partition
+      return { action: 'deny' };
+    }
+    shell.openExternal(url);         // non‑Web → external browser
+    return { action: 'deny' };
+  });
+
+  // Do not intercept file-like navigations; let Chromium create DownloadItems
+}
+
+function createWindow (query = {}) {
   const ses = session.defaultSession;
   enableSpellcheckForSession(ses);
 
@@ -193,48 +237,30 @@ function createWindow () {
 
   attachSpellcheckContextMenu(win.webContents, ses);
 
-  // Attach to Plus WebView session immediately
-  const plusSession = session.fromPartition('persist:voiddesk-plus');
-  enableSpellcheckForSession(plusSession);
+  // Attach to Web view session immediately
+  const webSession = session.fromPartition(WEB_PARTITION);
+  enableSpellcheckForSession(webSession);
+  const codexSession = session.fromPartition(CODEX_PARTITION);
+  enableSpellcheckForSession(codexSession);
 
   // Attach handlers for any webview we embed (downloads + window.open)
   win.webContents.on('did-attach-webview', (_event, wc) => {
-    attachSpellcheckContextMenu(wc, wc.session);
-
-    wc.setWindowOpenHandler(({ url }) => {
-      const httpFileLike = /^https?:/i.test(url) &&
-        /\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url);
-      if (httpFileLike) {
-        // Deny the popup and download directly in this WebContents
-        wc.downloadURL(url);
-        return { action: 'deny' };
-      }
-      // Allow blob:/data: popups to proceed so Chromium can handle the download natively
-      if (url.startsWith('blob:') || url.startsWith('data:')) {
-        return { action: 'allow' };
-      }
-      if (isPlusUrl(url)) {
-        openPlusWindow(url);           // stays logged in via persist:voiddesk-plus
-        return { action: 'deny' };
-      }
-      shell.openExternal(url);         // non‑Plus → external browser
-      return { action: 'deny' };
-    });
-
-  // Do not intercept file-like navigations; let Chromium create DownloadItems
+    setupWebviewHandlers(wc);
   });
 
   win.removeMenu();
-  win.loadFile('index.html');
+  win.loadFile('index.html', { query });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  return win;
 }
 
-// Helper: is this a ChatGPT/Plus URL that should open in an in-app Plus window?
-function isPlusUrl(u) {
+// Helper: is this a ChatGPT web URL that should open in an in-app Web window?
+function isWebChatUrl(u) {
   try {
     const h = new URL(u).hostname.toLowerCase();
     return (
@@ -244,25 +270,18 @@ function isPlusUrl(u) {
   } catch { return false; }
 }
 
-// Open a new app window that targets the Plus webview (keeps persist:voiddesk-plus session)
-function openPlusWindow(targetUrl) {
-  const win = new BrowserWindow({
-    width: 980,
-    height: 700,
-    icon: path.join(__dirname, 'assets', 'voiddesk.ico'),
-    webPreferences: {
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
-      webviewTag: true,
-      spellcheck: true
-    }
-  });
-  win.loadFile('index.html', { query: { plusUrl: targetUrl, mode: 'plus' } });
+// Open a new app window that targets the Web webview (keeps the dedicated session partition)
+function openWebWindow(targetUrl) {
+  return createWindow({ webUrl: targetUrl, plusUrl: targetUrl, mode: 'web' });
 }
 
 // Apply spellcheck languages to both sessions, persist in store
 function setSpellLangs(langs) {
-  const sessions = [session.defaultSession, session.fromPartition('persist:voiddesk-plus')];
+  const sessions = [
+    session.defaultSession,
+    session.fromPartition(WEB_PARTITION),
+    session.fromPartition(CODEX_PARTITION)
+  ];
   sessions.forEach(s => { try { s.setSpellCheckerLanguages(langs); } catch {} });
   store.set('spellLangs', langs);
 }
@@ -283,24 +302,30 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 
-  // Enable spellcheck for Plus mode's session
-  const plusSession = session.fromPartition('persist:voiddesk-plus');
-  enableSpellcheckForSession(plusSession);
+  // Enable spellcheck for the Web mode session
+  const webSession = session.fromPartition(WEB_PARTITION);
+  enableSpellcheckForSession(webSession);
+  const codexSession = session.fromPartition(CODEX_PARTITION);
+  enableSpellcheckForSession(codexSession);
 
   // Force direct connections (silence WPAD self-signed noise)
   setDirectProxy(session.defaultSession);
-  setDirectProxy(plusSession);
+  setDirectProxy(webSession);
+  setDirectProxy(codexSession);
 
-  // Attach spellcheck context menu for any web-contents created under Plus partition
+  // Attach spellcheck context menu for any web-contents created under the Web partition
   app.on('web-contents-created', (_event, wc) => {
-    if (wc.getType() === 'webview' && wc.session.partition === 'persist:voiddesk-plus') {
+    if (wc.getType() !== 'webview') return;
+    const partition = wc.session?.partition;
+    if (partition === WEB_PARTITION || partition === CODEX_PARTITION) {
       attachSpellcheckContextMenu(wc, wc.session);
     }
   });
 
   // Setup better download pipeline for both sessions
   setupDownloadHandling(session.defaultSession, 'download');
-  setupDownloadHandling(plusSession, 'downloadPlus');
+  setupDownloadHandling(webSession, ['downloadWeb', 'downloadPlus']);
+  setupDownloadHandling(codexSession, 'downloadCodex');
 });
 
 app.on('window-all-closed', () => {
@@ -335,14 +360,26 @@ app.on('renderer-process-crashed', (_e, wc) => {
   if (win) win.reload();
 });
 
-// Clear cookies/session for Plus mode on request (use the WebView's partition)
-ipcMain.handle('plus:logout', async () => {
-  const plusSession = session.fromPartition('persist:voiddesk-plus');
-  await plusSession.clearStorageData({
+// Clear cookies/session for Web mode on request (use the WebView partition)
+async function clearWebPartition() {
+  const webSession = session.fromPartition(WEB_PARTITION);
+  await webSession.clearStorageData({
     storages: ['cookies', 'localstorage', 'serviceworkers', 'caches', 'indexeddb', 'websql']
   });
   return true;
-});
+}
+
+async function clearCodexPartition() {
+  const codexSession = session.fromPartition(CODEX_PARTITION);
+  await codexSession.clearStorageData({
+    storages: ['cookies', 'localstorage', 'serviceworkers', 'caches', 'indexeddb', 'websql']
+  });
+  return true;
+}
+
+ipcMain.handle('web:logout', clearWebPartition);
+ipcMain.handle('plus:logout', clearWebPartition);
+ipcMain.handle('codex:logout', clearCodexPartition);
 
 // Persisted download history
 const DOWNLOAD_HISTORY_KEY = 'downloadHistory';
@@ -364,7 +401,8 @@ ipcMain.handle('app:relaunch', async () => {
 });
 
 // ---------------- Better download pipeline (both sessions) ----------------
-function setupDownloadHandling(ses, channelName = 'download') {
+function setupDownloadHandling(ses, channelNames = 'download') {
+  const names = Array.isArray(channelNames) ? channelNames : [channelNames];
   ses.on('will-download', async (event, item, wc) => {
   // Do not prevent default; let Chromium manage the transfer.
     // Helper to safely access DownloadItem without throwing if destroyed
@@ -409,7 +447,7 @@ function setupDownloadHandling(ses, channelName = 'download') {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const send = (type, payload = {}) => {
       const url = safe(() => item.getURL());
-      wc?.send(`${channelName}:${type}`, { id, url, ...payload });
+      names.forEach((name) => wc?.send(`${name}:${type}`, { id, url, ...payload }));
     };
 
     send('start', { filename: safe(() => item.getFilename(), filename), totalBytes: safe(() => item.getTotalBytes(), 0) });
