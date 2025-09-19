@@ -177,7 +177,49 @@ function markForceAsk(wc, url) {
   } catch {}
 }
 
-function createWindow () {
+function setupWebviewHandlers(wc) {
+  attachSpellcheckContextMenu(wc, wc.session);
+
+  wc.on('before-input-event', (event, input) => {
+    try {
+      if (input.isAutoRepeat) return;
+      const key = (input.key || '').toLowerCase();
+      const isHardReloadCombo =
+        input.type === 'keyDown' &&
+        input.shift &&
+        (input.control || input.meta) &&
+        (key === 'r' || input.code === 'KeyR');
+      if (!isHardReloadCombo) return;
+      event.preventDefault();
+      const host = wc.hostWebContents || wc.getOwnerBrowserWindow()?.webContents;
+      host?.send('hotkey:hardReload', { source: 'web' });
+    } catch {}
+  });
+
+  wc.setWindowOpenHandler(({ url }) => {
+    const httpFileLike = /^https?:/i.test(url) &&
+      /\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url);
+    if (httpFileLike) {
+      // Deny the popup and download directly in this WebContents
+      wc.downloadURL(url);
+      return { action: 'deny' };
+    }
+    // Allow blob:/data: popups to proceed so Chromium can handle the download natively
+    if (url.startsWith('blob:') || url.startsWith('data:')) {
+      return { action: 'allow' };
+    }
+    if (isWebChatUrl(url)) {
+      openWebWindow(url);           // stays logged in via the dedicated Web partition
+      return { action: 'deny' };
+    }
+    shell.openExternal(url);         // non‑Web → external browser
+    return { action: 'deny' };
+  });
+
+  // Do not intercept file-like navigations; let Chromium create DownloadItems
+}
+
+function createWindow (query = {}) {
   const ses = session.defaultSession;
   enableSpellcheckForSession(ses);
 
@@ -203,54 +245,18 @@ function createWindow () {
 
   // Attach handlers for any webview we embed (downloads + window.open)
   win.webContents.on('did-attach-webview', (_event, wc) => {
-    attachSpellcheckContextMenu(wc, wc.session);
-
-    wc.on('before-input-event', (event, input) => {
-      try {
-        if (input.isAutoRepeat) return;
-        const key = (input.key || '').toLowerCase();
-        const isHardReloadCombo =
-          input.type === 'keyDown' &&
-          input.shift &&
-          (input.control || input.meta) &&
-          (key === 'r' || input.code === 'KeyR');
-        if (!isHardReloadCombo) return;
-        event.preventDefault();
-        const host = wc.hostWebContents || wc.getOwnerBrowserWindow()?.webContents;
-        host?.send('hotkey:hardReload', { source: 'web' });
-      } catch {}
-    });
-
-    wc.setWindowOpenHandler(({ url }) => {
-      const httpFileLike = /^https?:/i.test(url) &&
-        /\.(png|jpe?g|gif|webp|svg|mp4|zip|pdf|txt|json|bin|csv|mp3|wav|webm)(\?|$)/i.test(url);
-      if (httpFileLike) {
-        // Deny the popup and download directly in this WebContents
-        wc.downloadURL(url);
-        return { action: 'deny' };
-      }
-      // Allow blob:/data: popups to proceed so Chromium can handle the download natively
-      if (url.startsWith('blob:') || url.startsWith('data:')) {
-        return { action: 'allow' };
-      }
-      if (isWebChatUrl(url)) {
-        openWebWindow(url);           // stays logged in via the dedicated Web partition
-        return { action: 'deny' };
-      }
-      shell.openExternal(url);         // non‑Web → external browser
-      return { action: 'deny' };
-    });
-
-  // Do not intercept file-like navigations; let Chromium create DownloadItems
+    setupWebviewHandlers(wc);
   });
 
   win.removeMenu();
-  win.loadFile('index.html');
+  win.loadFile('index.html', { query });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  return win;
 }
 
 // Helper: is this a ChatGPT web URL that should open in an in-app Web window?
@@ -266,18 +272,7 @@ function isWebChatUrl(u) {
 
 // Open a new app window that targets the Web webview (keeps the dedicated session partition)
 function openWebWindow(targetUrl) {
-  const win = new BrowserWindow({
-    width: 980,
-    height: 700,
-    icon: path.join(__dirname, 'assets', 'voiddesk.ico'),
-    webPreferences: {
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
-      webviewTag: true,
-      spellcheck: true
-    }
-  });
-  win.loadFile('index.html', { query: { webUrl: targetUrl, plusUrl: targetUrl, mode: 'web' } });
+  return createWindow({ webUrl: targetUrl, plusUrl: targetUrl, mode: 'web' });
 }
 
 // Apply spellcheck languages to both sessions, persist in store
