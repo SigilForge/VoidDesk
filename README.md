@@ -1,9 +1,10 @@
 README.md
 # VoidDesk (Hybrid)
 
-Ultra-minimal Electron client with two modes:
+Ultra-minimal Electron client with three modes:
 - **API Mode** — local streaming client for OpenAI (or any compatible API)
-- **Plus Mode** — embedded WebView of ChatGPT (uses your normal login & Plus features)
+- **Web Mode** — embedded WebView of ChatGPT (uses your normal login & Plus features)
+- **Codex Mode** — embedded OpenAI Playground session for rapid code & prompt testing
 
 ## Setup
 1. Install Node 18+.
@@ -11,14 +12,17 @@ Ultra-minimal Electron client with two modes:
 3. `npm run start`
 
 ## Usage
-- Toggle top-left: **🜏 API** ↔ **☁ Plus**.
-- **Plus Mode** persists your login (use *Logout Plus* if needed).
+- Toggle top-left between **🜏 API**, **☁ Web**, and **⌘ Codex**.
+- **Web Mode** persists your login (use *Logout Web* if needed).
+- **Codex Mode** keeps its own session and last URL (use *Logout Codex* if you need a clean login).
 - **Send → Other (Ctrl/Cmd+Shift+S)** moves selected text between modes.
+- Configure Codex repos in **Settings** — add manual links or enter a GitHub owner (plus optional token) to populate the Codex repo picker.
 
 ## Notes
 - Config/history stored via `electron-store`.
-- Default start in **Plus Mode** (can change in settings by editing `mode` in store).
+- Default start in **Web Mode** (can change in settings by editing `mode` in store).
 - WebView CSP allows only OpenAI domains.
+- GitHub tokens are stored locally in the app config when supplied for private repo access.
 
 ## Packaged builds
 - `npm run pack` for platform builds.
