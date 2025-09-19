@@ -27,6 +27,21 @@
         <button id="codexMode" class="mode">⌘ Codex</button>
       </div>
 
+      <div class="nav-group" id="webNavGroup">
+        <button id="webBack" class="nav-btn" title="Back (Alt+←) in Web view" disabled>←</button>
+        <button id="webForward" class="nav-btn" title="Forward (Alt+→) in Web view" disabled>→</button>
+        <button id="webHome" class="nav-btn" title="Home (Alt+H) for Web view">⌂</button>
+      </div>
+
+      <div class="nav-group" id="codexNavGroup">
+        <button id="codexBack" class="nav-btn" title="Back (Alt+←) in Codex" disabled>←</button>
+        <button id="codexForward" class="nav-btn" title="Forward (Alt+→) in Codex" disabled>→</button>
+        <button id="codexHome" class="nav-btn" title="Home (Alt+H) for Codex">⌂</button>
+        <select id="codexRepoSelect" title="Open configured repository in Codex">
+          <option value="">Repos</option>
+        </select>
+      </div>
+
       <label>API Key
         <input id="apiKey" type="password" placeholder="sk-..." />
       </label>
@@ -144,6 +159,18 @@
     <label>
       Reveal file in folder when done
       <input type="checkbox" id="revealOnComplete" />
+    </label>
+    <label>
+      Web home URL
+      <input id="webHomeInput" placeholder="https://chat.openai.com" />
+    </label>
+    <label>
+      Codex home URL
+      <input id="codexHomeInput" placeholder="https://platform.openai.com/playground" />
+    </label>
+    <label class="textarea">
+      Codex repository links
+      <textarea id="codexRepoList" rows="4" placeholder="Label | https://example.com/repo"></textarea>
     </label>
   </div>
   <button id="saveSettings">Save Settings</button>

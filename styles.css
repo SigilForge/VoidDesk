@@ -54,12 +54,49 @@ label {
   color: var(--muted); 
 }
 
-label input, select {
+label input,
+label select,
+label textarea {
   background: #0e1016;
   color: var(--ink);
   border: 1px solid #2a2f45;
   border-radius: 8px;
   padding: 6px 8px;
+}
+
+.nav-group {
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-group .nav-btn {
+  background: #1a1f33;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.nav-group .nav-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nav-group select {
+  background: #0e1016;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 120px;
+}
+
+.nav-group select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 #saveCfg, #clear, #send, #apiMode, #webMode, #codexMode, #sendOther, #logoutWeb, #logoutCodex {
@@ -327,6 +364,7 @@ progress {
 .settings.hidden { display: none; }
 .settings-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:18px; font-weight:600; }
 .settings-list label { display:block; margin-bottom:12px; font-size:14px; }
+.settings-list label.textarea textarea { width:100%; min-height:90px; resize:vertical; }
 #saveSettings { margin-top:8px; width:100%; border-radius:10px; background:#1a1f33; color:var(--ink); border:1px solid #2a2f45; padding:8px 0; cursor:pointer; font-size:15px; font-weight:500; }
 /* Settings button = same pill look as Downloads/Test DL */
 #settingsBtn {

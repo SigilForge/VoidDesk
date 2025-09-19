@@ -21,6 +21,15 @@ const codexView = document.getElementById('codexView') || null;
 const baseUrlEl = document.getElementById('baseUrl');
 const apiKindEl = document.getElementById('apiKind');
 const downloadsBtn = document.getElementById('downloadsBtn');
+const webNavGroup = document.getElementById('webNavGroup');
+const webBackBtn = document.getElementById('webBack');
+const webForwardBtn = document.getElementById('webForward');
+const webHomeBtn = document.getElementById('webHome');
+const codexNavGroup = document.getElementById('codexNavGroup');
+const codexBackBtn = document.getElementById('codexBack');
+const codexForwardBtn = document.getElementById('codexForward');
+const codexHomeBtn = document.getElementById('codexHome');
+const codexRepoSelect = document.getElementById('codexRepoSelect');
 // Note: downloadsPanel/downloadsList are defined after the script tag in index.html.
 // Query them at use-time to avoid nulls on initial load.
 const DRAFT_KEY = 'draft';
@@ -39,6 +48,8 @@ const MODE_WEB = 'web';
 const LEGACY_MODE_PLUS = 'plus';
 const MODE_CODEX = 'codex';
 const LEGACY_MODE_PLAYGROUND = 'playground';
+const DEFAULT_WEB_HOME = 'https://chat.openai.com';
+const DEFAULT_CODEX_HOME = 'https://platform.openai.com/playground';
 
 function normalizeMode(value) {
   if (!value) return null;
@@ -54,6 +65,10 @@ let lastPersistedWebUrl = null;
 
 let lastCodexUrl = null;
 let lastPersistedCodexUrl = null;
+
+let webHomeUrl = DEFAULT_WEB_HOME;
+let codexHomeUrl = DEFAULT_CODEX_HOME;
+let codexRepos = [];
 
 function isPersistableHttpUrl(url) {
   return typeof url === 'string' && /^https?:/i.test(url.trim());
@@ -100,6 +115,128 @@ async function flushCodexUrl(force = false) {
     ]);
   } catch (err) {
     console.warn('Failed to persist Codex URL:', err);
+  }
+}
+
+function sanitizeHomeUrl(value, fallback) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return isPersistableHttpUrl(trimmed) ? trimmed : fallback;
+}
+
+function normalizeRepoEntry(raw) {
+  if (!raw) return null;
+  let url = '';
+  let label = '';
+  if (typeof raw === 'string') {
+    url = raw;
+    label = raw;
+  } else if (typeof raw === 'object') {
+    if (typeof raw.url === 'string') url = raw.url;
+    else if (typeof raw.href === 'string') url = raw.href;
+    if (typeof raw.label === 'string') label = raw.label;
+    else if (typeof raw.name === 'string') label = raw.name;
+  }
+  url = (url || '').trim();
+  if (!isPersistableHttpUrl(url)) return null;
+  label = (label || '').trim();
+  if (!label) label = url.replace(/^https?:\/\//i, '');
+  return { label, url };
+}
+
+function normalizeRepoList(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    const normalized = normalizeRepoEntry(item);
+    if (!normalized) continue;
+    if (seen.has(normalized.url)) continue;
+    seen.add(normalized.url);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function parseRepoText(text) {
+  if (typeof text !== 'string') return [];
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const entries = [];
+  for (const line of lines) {
+    let label = '';
+    let url = '';
+    const idx = line.indexOf('|');
+    if (idx >= 0) {
+      label = line.slice(0, idx).trim();
+      url = line.slice(idx + 1).trim();
+    } else {
+      label = line;
+      url = line;
+    }
+    if (!isPersistableHttpUrl(url)) continue;
+    if (!label) label = url.replace(/^https?:\/\//i, '');
+    entries.push({ label, url });
+  }
+  return normalizeRepoList(entries);
+}
+
+function formatRepoText(list) {
+  if (!Array.isArray(list) || !list.length) return '';
+  return list.map(item => `${item.label} | ${item.url}`).join('\n');
+}
+
+function populateCodexRepoSelect() {
+  if (!codexRepoSelect) return;
+  codexRepoSelect.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = codexRepos.length ? 'Repos…' : 'No repos configured';
+  codexRepoSelect.appendChild(placeholder);
+  for (const repo of codexRepos) {
+    const opt = document.createElement('option');
+    opt.value = repo.url;
+    opt.textContent = repo.label || repo.url;
+    codexRepoSelect.appendChild(opt);
+  }
+  codexRepoSelect.value = '';
+  codexRepoSelect.disabled = codexRepos.length === 0;
+  codexRepoSelect.title = codexRepos.length
+    ? 'Open configured repository in Codex'
+    : 'Configure repository links in Settings';
+}
+
+function updateWebNavState() {
+  if (webHomeBtn) webHomeBtn.disabled = !webView;
+  if (!webView) {
+    if (webBackBtn) webBackBtn.disabled = true;
+    if (webForwardBtn) webForwardBtn.disabled = true;
+    return;
+  }
+  try {
+    const canBack = !!webView.canGoBack?.();
+    const canForward = !!webView.canGoForward?.();
+    if (webBackBtn) webBackBtn.disabled = !canBack;
+    if (webForwardBtn) webForwardBtn.disabled = !canForward;
+  } catch {
+    if (webBackBtn) webBackBtn.disabled = true;
+    if (webForwardBtn) webForwardBtn.disabled = true;
+  }
+}
+
+function updateCodexNavState() {
+  if (codexHomeBtn) codexHomeBtn.disabled = !codexView;
+  if (!codexView) {
+    if (codexBackBtn) codexBackBtn.disabled = true;
+    if (codexForwardBtn) codexForwardBtn.disabled = true;
+    return;
+  }
+  try {
+    const canBack = !!codexView.canGoBack?.();
+    const canForward = !!codexView.canGoForward?.();
+    if (codexBackBtn) codexBackBtn.disabled = !canBack;
+    if (codexForwardBtn) codexForwardBtn.disabled = !canForward;
+  } catch {
+    if (codexBackBtn) codexBackBtn.disabled = true;
+    if (codexForwardBtn) codexForwardBtn.disabled = true;
   }
 }
 
@@ -257,6 +394,11 @@ function setMode(next) {
   webBtn?.classList.toggle('active', mode === MODE_WEB);
   codexBtn?.classList.toggle('active', mode === MODE_CODEX);
 
+  if (webNavGroup) webNavGroup.style.display = (mode === MODE_WEB) ? 'inline-flex' : 'none';
+  if (codexNavGroup) codexNavGroup.style.display = (mode === MODE_CODEX) ? 'inline-flex' : 'none';
+  if (mode === MODE_WEB) updateWebNavState();
+  if (mode === MODE_CODEX) updateCodexNavState();
+
   const apiControls = [
     apiKeyEl?.closest('label'),
     modelEl?.closest('label'),
@@ -332,6 +474,9 @@ async function loadCfg() {
     savedLegacyPlusUrl,
     savedCodexUrl,
     savedLegacyPlaygroundUrl,
+    savedWebHome,
+    savedCodexHome,
+    savedCodexRepos,
   ] = await Promise.all([
     window.VoidDesk.cfg.get('apiKey'),
     window.VoidDesk.cfg.get('model'),
@@ -345,6 +490,9 @@ async function loadCfg() {
     window.VoidDesk.cfg.get(LEGACY_PLUS_URL_KEY),
     window.VoidDesk.cfg.get(CODEX_URL_KEY),
     window.VoidDesk.cfg.get(LEGACY_PLAYGROUND_URL_KEY),
+    window.VoidDesk.cfg.get('webHomeUrl'),
+    window.VoidDesk.cfg.get('codexHomeUrl'),
+    window.VoidDesk.cfg.get('codexRepos'),
   ]);
 
   apiKeyEl.value = k || '';
@@ -379,6 +527,11 @@ async function loadCfg() {
   if (isPersistableHttpUrl(persistedCodexUrl)) {
     lastPersistedCodexUrl = persistedCodexUrl;
   }
+
+  webHomeUrl = sanitizeHomeUrl(savedWebHome, DEFAULT_WEB_HOME);
+  codexHomeUrl = sanitizeHomeUrl(savedCodexHome, DEFAULT_CODEX_HOME);
+  codexRepos = normalizeRepoList(savedCodexRepos);
+  populateCodexRepoSelect();
 
   const initialWebUrl = isPersistableWebUrl(requestedWebUrl)
     ? requestedWebUrl
@@ -422,12 +575,16 @@ async function loadCfg() {
     webView.addEventListener('did-stop-loading', stopRefreshAnim);
     webView.addEventListener('did-finish-load', stopRefreshAnim);
     webView.addEventListener('did-fail-load', stopRefreshAnim);
+    webView.addEventListener('did-start-loading', updateWebNavState);
+    webView.addEventListener('did-stop-loading', updateWebNavState);
+    webView.addEventListener('did-fail-load', updateWebNavState);
 
     const trackWebNavigation = (event) => {
       const navUrl = event?.url || webView?.getURL?.();
       if (!navUrl) return;
       rememberWebUrl(navUrl);
       flushWebUrl().catch(() => {});
+      updateWebNavState();
     };
 
     webView.addEventListener('did-navigate', trackWebNavigation);
@@ -439,6 +596,7 @@ async function loadCfg() {
       if (!navUrl) return;
       rememberWebUrl(navUrl);
       flushWebUrl().catch(() => {});
+      updateWebNavState();
     });
   }
 
@@ -456,12 +614,16 @@ async function loadCfg() {
         }
       } catch {}
     });
+    codexView.addEventListener('did-start-loading', updateCodexNavState);
+    codexView.addEventListener('did-stop-loading', updateCodexNavState);
+    codexView.addEventListener('did-fail-load', updateCodexNavState);
 
     const trackCodexNavigation = (event) => {
       const navUrl = event?.url || codexView?.getURL?.();
       if (!navUrl) return;
       rememberCodexUrl(navUrl);
       flushCodexUrl().catch(() => {});
+      updateCodexNavState();
     };
 
     codexView.addEventListener('did-navigate', trackCodexNavigation);
@@ -473,8 +635,12 @@ async function loadCfg() {
       if (!navUrl) return;
       rememberCodexUrl(navUrl);
       flushCodexUrl().catch(() => {});
+      updateCodexNavState();
     });
   }
+
+  updateWebNavState();
+  updateCodexNavState();
 }
 
 async function saveCfg() {
@@ -512,6 +678,52 @@ logoutCodexBtn?.addEventListener('click', async () => {
   const logout = window.VoidDesk.codex?.logout;
   await logout?.();
   if (codexView) codexView.loadURL('https://platform.openai.com/playground');
+});
+
+webBackBtn?.addEventListener('click', () => {
+  try { if (webView?.canGoBack?.()) webView.goBack(); } catch {}
+});
+
+webForwardBtn?.addEventListener('click', () => {
+  try { if (webView?.canGoForward?.()) webView.goForward(); } catch {}
+});
+
+webHomeBtn?.addEventListener('click', () => {
+  if (!webView) return;
+  const target = sanitizeHomeUrl(webHomeUrl, DEFAULT_WEB_HOME);
+  if (target) {
+    try { webView.loadURL(target); } catch {}
+  }
+});
+
+codexBackBtn?.addEventListener('click', () => {
+  try { if (codexView?.canGoBack?.()) codexView.goBack(); } catch {}
+});
+
+codexForwardBtn?.addEventListener('click', () => {
+  try { if (codexView?.canGoForward?.()) codexView.goForward(); } catch {}
+});
+
+codexHomeBtn?.addEventListener('click', () => {
+  if (!codexView) return;
+  const target = sanitizeHomeUrl(codexHomeUrl, DEFAULT_CODEX_HOME);
+  if (target) {
+    try { codexView.loadURL(target); } catch {}
+  }
+});
+
+codexRepoSelect?.addEventListener('change', () => {
+  const url = codexRepoSelect.value;
+  if (!isPersistableHttpUrl(url)) {
+    codexRepoSelect.value = '';
+    return;
+  }
+  if (codexView) {
+    try { codexView.loadURL(url); } catch {}
+  } else {
+    window.open(url, '_blank');
+  }
+  codexRepoSelect.value = '';
 });
 
 // Universal refresh (soft / hard via Shift)
@@ -575,6 +787,41 @@ sendOtherBtn.addEventListener('click', () => {
 
 // ---------- Hotkeys ----------
 window.addEventListener('keydown', async (e) => {
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    const key = e.key || '';
+    if (key === 'ArrowLeft') {
+      if (mode === MODE_WEB && webView?.canGoBack?.()) {
+        e.preventDefault();
+        try { webView.goBack(); } catch {}
+        return;
+      }
+      if (mode === MODE_CODEX && codexView?.canGoBack?.()) {
+        e.preventDefault();
+        try { codexView.goBack(); } catch {}
+        return;
+      }
+    } else if (key === 'ArrowRight') {
+      if (mode === MODE_WEB && webView?.canGoForward?.()) {
+        e.preventDefault();
+        try { webView.goForward(); } catch {}
+        return;
+      }
+      if (mode === MODE_CODEX && codexView?.canGoForward?.()) {
+        e.preventDefault();
+        try { codexView.goForward(); } catch {}
+        return;
+      }
+    } else if (key.toLowerCase() === 'h') {
+      e.preventDefault();
+      if (mode === MODE_WEB) {
+        webHomeBtn?.click();
+      } else if (mode === MODE_CODEX) {
+        codexHomeBtn?.click();
+      }
+      return;
+    }
+  }
+
   // Send to other (Ctrl/Cmd+Shift+S)
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key || '').toLowerCase() === 's') {
     e.preventDefault();
@@ -930,25 +1177,49 @@ function applyTheme(theme) {
 }
 
 async function loadSettings() {
-  const langs = (await window.VoidDesk.cfg.get('spellLangs')) || ['en-US'];
+  const [
+    langsValue,
+    themeValue,
+    askValue,
+    revealValue,
+    storedWebHome,
+    storedCodexHome,
+    storedCodexRepos,
+  ] = await Promise.all([
+    window.VoidDesk.cfg.get('spellLangs'),
+    window.VoidDesk.cfg.get('theme'),
+    window.VoidDesk.cfg.get('askWhereToSave'),
+    window.VoidDesk.cfg.get('revealOnComplete'),
+    window.VoidDesk.cfg.get('webHomeUrl'),
+    window.VoidDesk.cfg.get('codexHomeUrl'),
+    window.VoidDesk.cfg.get('codexRepos'),
+  ]);
+
+  const langs = Array.isArray(langsValue) && langsValue.length ? langsValue : ['en-US'];
   const langSel = document.getElementById('spellLangs');
   if (langSel && 'options' in langSel) {
     for (const opt of langSel.options) opt.selected = langs.includes(opt.value);
   }
 
-  const theme = (await window.VoidDesk.cfg.get('theme')) || 'dark';
+  const theme = typeof themeValue === 'string' ? themeValue : 'dark';
   const themeSel = document.getElementById('themeSelect');
   if (themeSel) themeSel.value = theme;
   applyTheme(theme);
 
-  // New: ask where to save
-  const ask = await window.VoidDesk.cfg.get('askWhereToSave');
   const askCb = document.getElementById('askWhereToSave');
-  if (askCb) askCb.checked = !!ask;
+  if (askCb) askCb.checked = !!askValue;
 
-  const reveal = await window.VoidDesk.cfg.get('revealOnComplete');
   const revealCb = document.getElementById('revealOnComplete');
-  if (revealCb) revealCb.checked = !!reveal;
+  if (revealCb) revealCb.checked = !!revealValue;
+
+  const webHomeInput = document.getElementById('webHomeInput');
+  if (webHomeInput) webHomeInput.value = sanitizeHomeUrl(storedWebHome, DEFAULT_WEB_HOME);
+
+  const codexHomeInput = document.getElementById('codexHomeInput');
+  if (codexHomeInput) codexHomeInput.value = sanitizeHomeUrl(storedCodexHome, DEFAULT_CODEX_HOME);
+
+  const repoListInput = document.getElementById('codexRepoList');
+  if (repoListInput) repoListInput.value = formatRepoText(normalizeRepoList(storedCodexRepos));
 }
 
 function openSettings() {
@@ -972,17 +1243,41 @@ document.addEventListener('click', async (e) => {
   } else if (t.id === 'saveSettings') {
     const langSel = document.getElementById('spellLangs');
     const themeSel = document.getElementById('themeSelect');
-  const askCb = document.getElementById('askWhereToSave');
-  const revealCb = document.getElementById('revealOnComplete');
+    const askCb = document.getElementById('askWhereToSave');
+    const revealCb = document.getElementById('revealOnComplete');
+    const webHomeInput = document.getElementById('webHomeInput');
+    const codexHomeInput = document.getElementById('codexHomeInput');
+    const repoListInput = document.getElementById('codexRepoList');
+
     const langs = Array.from(langSel?.selectedOptions || []).map(o => o.value);
     const theme = themeSel?.value || 'dark';
-  const ask = !!askCb?.checked;
-  const reveal = !!revealCb?.checked;
+    const ask = !!askCb?.checked;
+    const reveal = !!revealCb?.checked;
+    const newWebHome = sanitizeHomeUrl(webHomeInput?.value, DEFAULT_WEB_HOME);
+    const newCodexHome = sanitizeHomeUrl(codexHomeInput?.value, DEFAULT_CODEX_HOME);
+    const newRepoList = parseRepoText(repoListInput?.value || '');
 
-    await window.VoidDesk.cfg.set('spellLangs', langs);
-    await window.VoidDesk.cfg.set('theme', theme);
-  await window.VoidDesk.cfg.set('askWhereToSave', ask);
-  await window.VoidDesk.cfg.set('revealOnComplete', reveal);
+    await Promise.all([
+      window.VoidDesk.cfg.set('spellLangs', langs),
+      window.VoidDesk.cfg.set('theme', theme),
+      window.VoidDesk.cfg.set('askWhereToSave', ask),
+      window.VoidDesk.cfg.set('revealOnComplete', reveal),
+      window.VoidDesk.cfg.set('webHomeUrl', newWebHome),
+      window.VoidDesk.cfg.set('codexHomeUrl', newCodexHome),
+      window.VoidDesk.cfg.set('codexRepos', newRepoList),
+    ]);
+
+    webHomeUrl = newWebHome;
+    codexHomeUrl = newCodexHome;
+    codexRepos = newRepoList;
+    populateCodexRepoSelect();
+    updateWebNavState();
+    updateCodexNavState();
+
+    if (webHomeInput) webHomeInput.value = webHomeUrl;
+    if (codexHomeInput) codexHomeInput.value = codexHomeUrl;
+    if (repoListInput) repoListInput.value = formatRepoText(codexRepos);
+
     applyTheme(theme);
 
     try { await window.VoidDesk.spellcheck.setLanguages(langs); } catch {}
