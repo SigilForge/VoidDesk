@@ -42,92 +42,207 @@
   }, true);
 })();
 
-// Allow scrolling within nested project folders in the ChatGPT sidebar.
+// Allow scrolling inside ChatGPT project folders and their chat lists.
 (() => {
   const host = (window.location?.hostname || '').toLowerCase();
   if (!/chat(openai|gpt)\.com$/.test(host) && !host.endsWith('.chat.openai.com')) {
-    return; // Only patch the ChatGPT sidebar; skip playground or other domains.
+    return; // Only patch the ChatGPT experience; skip other embeds such as the playground.
   }
 
-  const STYLE_ID = 'voiddesk-sidebar-scroll-style';
-  const GROUP_SELECTOR = '[role="treeitem"] [role="group"]';
-  const NAV_ROOT_SELECTOR = 'nav,aside';
-  const EXTRA_TARGETS = [
-    'div[data-radix-scroll-area-viewport]',
-    '[data-testid="tree-item-list"]',
-    'ol',
-    'ul'
+  const TARGET_SELECTORS = [
+    '[data-testid*="tree" i]',
+    '[data-testid*="folder" i]',
+    '[data-testid*="project" i]',
+    '[data-testid*="conversation" i]',
+    '[data-testid*="thread" i]',
+    '[data-radix-scroll-area-viewport]',
+    '[data-radix-scroll-area-content]',
+    '[role="tree"]',
+    '[role="group"]'
   ];
+  const TARGET_SELECTOR = TARGET_SELECTORS.join(',');
 
-  const applyScrollFix = (el) => {
-    if (!(el instanceof HTMLElement)) return;
-    if (!el.closest(NAV_ROOT_SELECTOR)) return;
-    el.style.setProperty('max-height', 'min(65vh, 560px)', 'important');
-    el.style.setProperty('overflow-y', 'auto', 'important');
-    el.style.setProperty('overscroll-behavior', 'contain', 'important');
-    el.style.setProperty('scrollbar-gutter', 'stable both-edges');
-    el.style.setProperty('-webkit-overflow-scrolling', 'touch');
+  const LIST_CONTENT_SELECTOR = [
+    'li',
+    '[role="treeitem"]',
+    '[data-testid*="tree-item" i]',
+    '[data-testid*="folder-item" i]',
+    '[data-testid*="conversation" i]',
+    '[data-testid*="thread" i]',
+    'a[href*="/g/"]',
+    'a[href*="/share/"]'
+  ].join(',');
+
+  const CONTEXT_SELECTOR = 'nav,aside,main,[data-testid*="sidebar" i],[data-testid*="project" i],[data-testid*="folder" i],[data-testid*="workspace" i]';
+
+  const tracked = new Set();
+  let measurePending = false;
+  const MIN_HEIGHT = 200;
+  const VIEWPORT_PADDING = 16;
+
+  const descriptorFor = (el) => {
+    if (!(el instanceof HTMLElement)) return '';
+    const parts = [
+      el.getAttribute('role') || '',
+      el.getAttribute('data-testid') || '',
+      el.getAttribute('aria-label') || '',
+      el.id || ''
+    ];
+    const className = typeof el.className === 'string' ? el.className : '';
+    if (className) parts.push(className);
+    return parts.join(' ').toLowerCase();
   };
 
-  const ensureStyle = () => {
+  const looksListLike = (node) => {
+    if (!(node instanceof HTMLElement)) return false;
+    if (node.children.length >= 3) return true;
     try {
-      if (document.getElementById(STYLE_ID)) return;
-      const style = document.createElement('style');
-      style.id = STYLE_ID;
-      style.textContent = `
-        nav [role="treeitem"] [role="group"],
-        nav [role="treeitem"] [role="group"] div[data-radix-scroll-area-viewport],
-        nav [role="treeitem"] [role="group"] [data-testid="tree-item-list"],
-        nav [role="treeitem"] [role="group"] ol,
-        nav [role="treeitem"] [role="group"] ul {
-          max-height: min(65vh, 560px) !important;
-          overflow-y: auto !important;
-          overscroll-behavior: contain !important;
-          scrollbar-gutter: stable both-edges;
-          -webkit-overflow-scrolling: touch;
+      return !!node.querySelector(LIST_CONTENT_SELECTOR);
+    } catch {
+      return false;
+    }
+  };
+
+  const shouldHandle = (node) => {
+    if (!(node instanceof HTMLElement)) return false;
+    if (node.dataset?.voiddeskScrollFix === '1') return false;
+    if (!node.matches(TARGET_SELECTOR)) return false;
+    if (!node.closest(CONTEXT_SELECTOR)) return false;
+    if (!looksListLike(node)) return false;
+
+    const descriptor = descriptorFor(node);
+    if (/tree|folder|project|conversation|thread|history|workspace|list/.test(descriptor)) {
+      return true;
+    }
+
+    const parentDescriptor = descriptorFor(node.parentElement);
+    return /tree|folder|project|conversation|thread|history|workspace|list/.test(parentDescriptor);
+  };
+
+  const markFlexParents = (node) => {
+    let current = node.parentElement;
+    while (current && current !== document.body) {
+      if (current.dataset?.voiddeskFlexPatched === '1') {
+        current = current.parentElement;
+        continue;
+      }
+      try {
+        const style = window.getComputedStyle(current);
+        if (style.display === 'flex' || style.display === 'inline-flex') {
+          current.style.setProperty('min-height', '0', 'important');
+          current.dataset.voiddeskFlexPatched = '1';
+        } else if (style.display === 'grid') {
+          current.style.setProperty('min-height', '0', 'important');
+          current.style.setProperty('align-content', 'stretch', 'important');
+          current.dataset.voiddeskFlexPatched = '1';
         }
-      `;
-      document.head?.appendChild(style);
+      } catch {}
+      current = current.parentElement;
+    }
+  };
+
+  const updateMaxHeight = (node) => {
+    if (!(node instanceof HTMLElement) || !node.isConnected) {
+      tracked.delete(node);
+      return;
+    }
+    let viewportHeight = window.innerHeight;
+    if (!viewportHeight) {
+      viewportHeight = document.documentElement?.clientHeight || 0;
+    }
+    if (!viewportHeight) return;
+    try {
+      const rect = node.getBoundingClientRect();
+      if (!rect || !Number.isFinite(rect.top)) return;
+      const available = Math.max(
+        MIN_HEIGHT,
+        Math.round(viewportHeight - rect.top - VIEWPORT_PADDING)
+      );
+      if (available > 0) {
+        node.style.setProperty('max-height', `${available}px`, 'important');
+      }
     } catch {}
   };
 
-  const patchGroups = (root = document) => {
+  const scheduleMeasure = () => {
+    if (measurePending) return;
+    measurePending = true;
     try {
-      const scope = root.querySelectorAll?.(GROUP_SELECTOR) || [];
-      scope.forEach((group) => {
-        if (!(group instanceof HTMLElement)) return;
-        if (!group.closest(NAV_ROOT_SELECTOR)) return;
-        applyScrollFix(group);
-        EXTRA_TARGETS.forEach((selector) => {
-          group.querySelectorAll?.(selector)?.forEach?.((node) => applyScrollFix(node));
-        });
+      window.requestAnimationFrame(() => {
+        measurePending = false;
+        tracked.forEach((node) => updateMaxHeight(node));
       });
+    } catch {
+      measurePending = false;
+    }
+  };
+
+  const applyScrollFix = (node) => {
+    if (!shouldHandle(node)) return;
+    node.dataset.voiddeskScrollFix = '1';
+    try {
+      node.style.setProperty('overflow-y', 'auto', 'important');
+      node.style.setProperty('overscroll-behavior', 'contain', 'important');
+      node.style.setProperty('scrollbar-gutter', 'stable both-edges', 'important');
+      node.style.setProperty('-webkit-overflow-scrolling', 'touch', 'important');
     } catch {}
+    markFlexParents(node);
+    tracked.add(node);
+    scheduleMeasure();
+  };
+
+  const scan = (root) => {
+    if (!root) return;
+    if (root instanceof HTMLElement) {
+      applyScrollFix(root);
+    }
+    const elements = typeof root.querySelectorAll === 'function'
+      ? root.querySelectorAll(TARGET_SELECTOR)
+      : [];
+    elements.forEach((el) => applyScrollFix(el));
   };
 
   const init = () => {
-    ensureStyle();
-    patchGroups(document);
+    try {
+      scan(document.documentElement || document);
+    } catch {}
+
     try {
       const observer = new MutationObserver((mutations) => {
+        let touched = false;
         for (const mut of mutations) {
-          if (mut.type === 'attributes') {
+          if (mut.type === 'attributes' && mut.target instanceof HTMLElement) {
             applyScrollFix(mut.target);
+            touched = true;
           }
-          for (const node of mut.addedNodes) {
-            if (!(node instanceof HTMLElement)) continue;
-            patchGroups(node);
-          }
+          mut.addedNodes.forEach?.((node) => {
+            if (node instanceof HTMLElement) {
+              scan(node);
+              touched = true;
+            }
+          });
+          mut.removedNodes.forEach?.((node) => {
+            if (node instanceof HTMLElement && tracked.has(node)) {
+              tracked.delete(node);
+            }
+          });
         }
+        if (touched) scheduleMeasure();
       });
       observer.observe(document.documentElement, {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['style', 'class']
+        attributeFilter: ['class', 'style', 'role', 'data-testid', 'aria-label']
       });
       window.addEventListener('beforeunload', () => observer.disconnect(), { once: true });
     } catch {}
+
+    window.addEventListener('resize', scheduleMeasure);
+    window.addEventListener('orientationchange', scheduleMeasure);
+    window.addEventListener('pageshow', scheduleMeasure);
+    window.addEventListener('load', scheduleMeasure);
+    scheduleMeasure();
   };
 
   if (document.readyState === 'loading') {
