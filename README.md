@@ -18,6 +18,13 @@ Ultra-minimal Electron client with three modes:
 - **Send → Other (Ctrl/Cmd+Shift+S)** moves selected text between modes.
 - Configure Codex repos in **Settings** — add manual links or enter a GitHub owner (plus optional token) to populate the Codex repo picker.
 
+## Codex CLI
+
+- Run Codex-style prompts from the terminal with `npm run codex -- "Explain this code"` or `node codex-cli.js`.
+- The CLI reuses your saved API key, base URL, model, and system prompt when available (falls back to `OPENAI_API_KEY` / `OPENAI_BASE_URL`).
+- Supports streaming by default, the Responses API via `--responses`, and file context injection with `--file path/to/file`.
+- Packaged builds place the helper at `VoidDesk/resources/bin/codex-cli.js` so it can be executed with `node` alongside the desktop app.
+
 ## Notes
 - Config/history stored via `electron-store`.
 - Default start in **Web Mode** (can change in settings by editing `mode` in store).
