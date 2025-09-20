@@ -2,11 +2,12 @@
   "name": "voiddesk",
   "version": "0.4.0",
   "private": true,
-  "description": "Ultra-minimal GPT desktop client with streaming + Plus/WebView mode.",
+  "description": "Ultra-minimal GPT desktop client with streaming + Web/WebView mode.",
   "main": "main.js",
   "author": "SigilForge",
   "scripts": {
     "start": "electron .",
+    "codex": "node codex-cli.js",
     "build:win": "electron-builder --win nsis zip --publish never",
     "build:mac": "electron-builder --mac dmg zip --publish never",
     "build:linux": "electron-builder --linux AppImage deb --publish never",
@@ -23,11 +24,19 @@
       "main.js",
       "preload.js",
       "renderer.js",
+      "web-preload.js",
       "index.html",
       "styles.css",
       "README.md",
+      "codex-cli.js",
       "assets/**",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "codex-cli.js",
+        "to": "bin/codex-cli.js"
+      }
     ],
     "asar": true,
     "win": {

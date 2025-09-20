@@ -9,7 +9,7 @@
              img-src 'self' data: https:;
              style-src 'self' 'unsafe-inline';
              connect-src 'self' https: wss:;
-             frame-src https://chat.openai.com https://platform.openai.com;
+             frame-src https://chat.openai.com https://platform.openai.com https:;
              worker-src blob:;
              child-src blob:;"
   />
@@ -23,7 +23,23 @@
     <div class="row">
       <div class="mode-toggle">
         <button id="apiMode" class="mode active">🜏 API</button>
-        <button id="plusMode" class="mode">☁ Plus</button>
+        <button id="webMode" class="mode">☁ Web</button>
+        <button id="codexMode" class="mode">⌘ Codex</button>
+      </div>
+
+      <div class="nav-group" id="webNavGroup">
+        <button id="webBack" class="nav-btn" title="Back (Alt+←) in Web view" disabled>←</button>
+        <button id="webForward" class="nav-btn" title="Forward (Alt+→) in Web view" disabled>→</button>
+        <button id="webHome" class="nav-btn" title="Home (Alt+H) for Web view">⌂</button>
+      </div>
+
+      <div class="nav-group" id="codexNavGroup">
+        <button id="codexBack" class="nav-btn" title="Back (Alt+←) in Codex" disabled>←</button>
+        <button id="codexForward" class="nav-btn" title="Forward (Alt+→) in Codex" disabled>→</button>
+        <button id="codexHome" class="nav-btn" title="Home (Alt+H) for Codex">⌂</button>
+        <select id="codexRepoSelect" title="Open configured repository in Codex">
+          <option value="">Repos</option>
+        </select>
       </div>
 
       <label>API Key
@@ -58,7 +74,8 @@
       </svg>
       <span>Refresh</span>
     </button>
-    <button id="logoutPlus" title="Logout Plus mode">Logout Plus</button>
+    <button id="logoutWeb" title="Logout Web mode">Logout Web</button>
+    <button id="logoutCodex" title="Logout Codex mode">Logout Codex</button>
     <button id="downloadsBtn" title="Downloads (Ctrl+J)">⬇ Downloads</button>
       <button id="settingsBtn" title="Settings">⚙ Settings</button>
     </div>
@@ -72,15 +89,26 @@
     <section id="apiPane" class="pane">
       <div id="chat"></div>
     </section>
-    <section id="plusPane" class="pane hidden">
+    <section id="webPane" class="pane hidden">
+      <!-- Legacy partition name retained so existing sessions persist across upgrades -->
       <webview
-  id="plusView"
+  id="webView"
   src="https://chat.openai.com"
   allowpopups
   partition="persist:voiddesk-plus"
-  preload="plus-preload.js"
+  preload="web-preload.js"
   style="width:100%; height:100%;"
 ></webview>
+    </section>
+    <section id="codexPane" class="pane hidden">
+      <webview
+        id="codexView"
+        src="https://platform.openai.com/playground"
+        allowpopups
+        partition="persist:voiddesk-codex"
+        preload="web-preload.js"
+        style="width:100%; height:100%;"
+      ></webview>
     </section>
   </main>
 
@@ -132,6 +160,33 @@
       Reveal file in folder when done
       <input type="checkbox" id="revealOnComplete" />
     </label>
+    <label>
+      Web home URL
+      <input id="webHomeInput" placeholder="https://chat.openai.com" />
+    </label>
+    <label>
+      Codex home URL
+      <input id="codexHomeInput" placeholder="https://platform.openai.com/playground" />
+    </label>
+    <label class="textarea">
+      Codex repository links
+      <textarea id="codexRepoList" rows="4" placeholder="Label | https://example.com/repo"></textarea>
+    </label>
+    <label>
+      GitHub owner (user or org)
+      <input id="codexGithubOwner" placeholder="octocat" autocomplete="off" spellcheck="false" />
+    </label>
+    <label>
+      GitHub token (optional)
+      <input id="codexGithubToken" type="password" placeholder="ghp_..." autocomplete="off" spellcheck="false" />
+    </label>
+    <label>
+      Include private repositories
+      <input type="checkbox" id="codexGithubIncludePrivate" />
+    </label>
+    <div class="settings-note">
+      GitHub repositories load into the Codex selector and stay on this device. Private repos require a personal access token.
+    </div>
   </div>
   <button id="saveSettings">Save Settings</button>
 </div>

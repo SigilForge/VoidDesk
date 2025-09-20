@@ -54,7 +54,9 @@ label {
   color: var(--muted); 
 }
 
-label input, select {
+label input,
+label select,
+label textarea {
   background: #0e1016;
   color: var(--ink);
   border: 1px solid #2a2f45;
@@ -62,7 +64,46 @@ label input, select {
   padding: 6px 8px;
 }
 
-#saveCfg, #clear, #send, #apiMode, #plusMode, #sendOther, #logoutPlus {
+.nav-group {
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-group .nav-btn {
+  background: #1a1f33;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.nav-group .nav-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nav-group select {
+  background: #0e1016;
+  color: var(--ink);
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 120px;
+}
+.nav-group select.loading {
+  opacity: 0.75;
+  cursor: progress;
+}
+
+.nav-group select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+#saveCfg, #clear, #send, #apiMode, #webMode, #codexMode, #sendOther, #logoutWeb, #logoutCodex {
   background: #1a1f33;
   color: var(--ink);
   border: 1px solid #2a2f45;
@@ -70,8 +111,8 @@ label input, select {
   padding: 6px 10px;
   cursor: pointer;
 }
-#saveCfg:hover, #clear:hover, #send:hover, .mode:hover, #sendOther:hover, #logoutPlus:hover { 
-  filter: brightness(1.15); 
+#saveCfg:hover, #clear:hover, #send:hover, .mode:hover, #sendOther:hover, #logoutWeb:hover, #logoutCodex:hover {
+  filter: brightness(1.15);
 }
 
 .mode-toggle { 
@@ -173,8 +214,15 @@ main {
 
 .pane {
   height: 100%;
-  display: flex;       
+  display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.pane webview {
+  flex: 1;
+  min-height: 0;
 }
 
 .hidden { display: none; }
@@ -320,6 +368,9 @@ progress {
 .settings.hidden { display: none; }
 .settings-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:18px; font-weight:600; }
 .settings-list label { display:block; margin-bottom:12px; font-size:14px; }
+.settings-list label.textarea textarea { width:100%; min-height:90px; resize:vertical; }
+.settings-list .settings-note { font-size:12px; color:var(--muted); margin:-4px 0 12px; line-height:1.4; }
+#settingsPanel input[type="password"] { font-family: inherit; }
 #saveSettings { margin-top:8px; width:100%; border-radius:10px; background:#1a1f33; color:var(--ink); border:1px solid #2a2f45; padding:8px 0; cursor:pointer; font-size:15px; font-weight:500; }
 /* Settings button = same pill look as Downloads/Test DL */
 #settingsBtn {
